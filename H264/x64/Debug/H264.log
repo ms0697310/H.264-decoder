@@ -1,2 +1,11 @@
 ﻿  H264.cpp
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(33,24): warning C4244: '正在初始化': 將 'unsigned __int64' 轉換為 'uint16_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(35,52): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(35,49): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(35,46): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(54,90): warning C4244: 'return': 將 'unsigned __int64' 轉換為 'uint16_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(57,50): warning C4244: 'return': 將 'unsigned long' 轉換為 'uint16_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(60,55): warning C4244: 'return': 將 'unsigned long' 轉換為 'uint16_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(63,57): warning C4244: 'return': 將 'unsigned long' 轉換為 'uint16_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(105): warning C4715: 'H264Decoder::SDLInit': 不是所有控制路徑都傳回值
   H264.vcxproj -> D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\x64\Debug\H264.exe
