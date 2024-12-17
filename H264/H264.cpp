@@ -9,7 +9,35 @@
 #include <iomanip>
 //#define DEBUG
 using namespace std;
-
+#define ChromaArrayType (separate_colour_plane_flag == 0) ? chroma_format_idc : 0
+#define SliceGroupChangeRate slice_group_change_rate_minus1 + 1
+#define SubWidthC (chroma_format_idc == 1||chroma_format_idc == 2) ? 2: (chroma_format_idc == 3? 1 : 0 )
+#define SubHeightC ((chroma_format_idc == 2||chroma_format_idc == 3)&& separate_colour_plane_flag == 0) ? 1: (chroma_format_idc == 1? 2 : 0 )
+#define MbWidthC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubWidthC) // 6-1
+#define MbHeightC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubHeightC) // 6-2
+#define BitDepthY 8 + bit_depth_luma_minus8  // 7-3
+#define QpBdOffsetY 6 * bit_depth_luma_minus8 // 7-4
+#define BitDepthC  8 + bit_depth_chroma_minus8 // 7-5
+#define QpBdOffsetC 6 * bit_depth_chroma_minus8 // 7-6
+#define RawMbBits  256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC // 7-7
+#define PicWidthInMbs pic_width_in_mbs_minus1 + 1 // 7-13
+#define PicWidthInSamplesL PicWidthInMbs * 16 // 7-14
+#define PicWidthInSamplesC PicWidthInMbs * MbWidthC  // 7-15
+#define PicHeightInMapUnits pic_height_in_map_units_minus1 + 1 // 7-16
+#define PicSizeInMapUnits  PicWidthInMbs * PicHeightInMapUnits // 7-17
+#define FrameHeightInMbs ( 2 - frame_mbs_only_flag ) * PicHeightInMapUnits  // 7-18
+#define IdrPicFlag  ( ( nal_unit_type == 5 ) ? 1 : 0 )
+#define MbaffFrameFlag ( mb_adaptive_frame_field_flag && !field_pic_flag ) 
+#define PicHeightInMbs  FrameHeightInMbs / ( 1 + field_pic_flag ) 
+#define PicHeightInSamplesL  PicHeightInMbs * 16
+#define PicHeightInSamplesC  PicHeightInMbs * MbHeightC 
+#define PicSizeInMbs  PicWidthInMbs * PicHeightInMbs
+#define MapUnitsInSliceGroup0 min( slice_group_change_cycle * SliceGroupChangeRate, PicSizeInMapUnits)// 7-36
+// 8-24 8-25 8-26
+#define MbToSliceGroupMap(i) (frame_mbs_only_flag == 1 || field_pic_flag == 1)\
+? mapUnitToSliceGroupMap[i] : MbaffFrameFlag == 1 \
+? mapUnitToSliceGroupMap[ i / 2 ] \
+: mapUnitToSliceGroupMap[ ( i / ( 2 * PicWidthInMbs ) ) * PicWidthInMbs + (i % PicWidthInMbs)]
 class H264Decoder {
 public:
 	H264Decoder(string fileName) {
@@ -32,17 +60,99 @@ private:
 		bitsInit();
 	}
 
+	enum SliceType { P = 0, B, I, SP, SI };
+	enum MBType_I {
+		// I
+		I_NxN = 0,
+		I_16x16_0_0_0,
+		I_16x16_1_0_0,
+		I_16x16_2_0_0,
+		I_16x16_3_0_0,
+		I_16x16_0_1_0,
+		I_16x16_1_1_0,
+		I_16x16_2_1_0,
+		I_16x16_3_1_0,
+		I_16x16_0_2_0,
+		I_16x16_1_2_0,
+		I_16x16_2_2_0,
+		I_16x16_3_2_0,
+		I_16x16_0_0_1,
+		I_16x16_1_0_1,
+		I_16x16_2_0_1,
+		I_16x16_3_0_1,
+		I_16x16_0_1_1,
+		I_16x16_1_1_1,
+		I_16x16_2_1_1,
+		I_16x16_3_1_1,
+		I_16x16_0_2_1,
+		I_16x16_1_2_1,
+		I_16x16_2_2_1,
+		I_16x16_3_2_1,
+		I_PCM,
+	};
+	enum MBType_P {
+		// P and SP
+		P_L0_16x16 = 0,
+		P_L0_L0_16x8,
+		P_L0_L0_8x16,
+		P_8x8,
+		P_8x8ref0,
+		P_Skip,
+	};
+	enum MBType_B {
+		// B
+		B_Direct_16x16 = 0,
+		B_L0_16x16,
+		B_L1_16x16,
+		B_Bi_16x16,
+		B_L0_L0_16x8,
+		B_L0_L0_8x16,
+		B_L1_L1_16x8,
+		B_L1_L1_8x16,
+		B_L0_L1_16x8,
+		B_L0_L1_8x16,
+		B_L1_L0_16x8,
+		B_L1_L0_8x16,
+		B_L0_Bi_16x8,
+		B_L0_Bi_8x16,
+		B_L1_Bi_16x8,
+		B_L1_Bi_8x16,
+		B_Bi_L0_16x8,
+		B_Bi_L0_8x16,
+		B_Bi_L1_16x8,
+		B_Bi_L1_8x16,
+		B_Bi_Bi_16x8,
+		B_Bi_Bi_8x16,
+		B_8x8,
+		B_Skip
+	};
+	enum MbPartPredModeType {
+		na,
+		// I
+		Intra_4x4,
+		Intra_8x8,
+		Intra_16x16,
+		// B, P and SP
+		Direct,
+		Pred_L0,
+		Pred_L1,
+		BiPred,
+	};
+	bool sliceTypeCheck(SliceType type) {
+		return slice_type % 5 == type;
+	}
 #pragma region NAL
 	int cc = 0;
 	// B.1.1 Byte stream NAL unit syntax
 	void byte_stream_nal_unit() {
 		while (next_bits(24) != 0x000001 &&
-			next_bits(32) != 0x00000001) 
+			next_bits(32) != 0x00000001)
 			read_bits(8);//leading_zero_8bits /* equal to 0x00 */ f(8)
 		if (next_bits(24) != 0x000001)
 			read_bits(8);//zero_byte /* equal to 0x00 */ f(8)
 		read_bits(24);//start_code_prefix_one_3bytes /* equal to 0x000001 */ f(24)
 		nal_unit();
+
 		while (more_data_in_byte_stream() &&
 			next_bits(24) != 0x000001 &&
 			next_bits(32) != 0x00000001)
@@ -59,7 +169,7 @@ private:
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
-		cout << "NLU " << cc++ << " TYPE " << nal_unit_type  << endl;
+		cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
 
 		nalUnitHeaderBytes = 1;
 		if (nal_unit_type == 14 || nal_unit_type == 20 || nal_unit_type == 21) {
@@ -91,6 +201,29 @@ private:
 			}
 			else
 				RBSP.push_back(read_bits(8)); //rbsp_byte[NumBytesInRBSP++] All b(8)
+		}
+	}
+
+	void typeHandler() {
+		switch (nal_unit_type)
+		{
+		case 1:
+			slice_layer_without_partitioning_rbsp();
+			break;
+		case 5:
+			slice_layer_without_partitioning_rbsp();
+			break;
+		case 6:
+			//sei_rbsp();
+			break;
+		case 7:
+			seq_parameter_set_rbsp();
+			break;
+		case 8:
+			pic_parameter_set_rbsp();
+			break;
+		default:
+			break;
 		}
 	}
 	//F.7.3.1.1 NAL unit header SVC extension syntax
@@ -168,7 +301,7 @@ private:
 	}
 	const uint32_t next_bits(size_t n) {
 		if (n == 0) return 0;
-		return (bits<< bitsIndex) >> (32 - n);
+		return (bits << bitsIndex) >> (32 - n);
 	}
 	// f(n)  u(n) b(8) p.68
 	const uint32_t read_bits(size_t n) {
@@ -186,13 +319,18 @@ private:
 		int leadingZeroBits = -1;
 		for (uint8_t b = 0; !b; leadingZeroBits++)
 			b = read_bits(1);
-		uint32_t codeNum = 1 << leadingZeroBits - 1 + read_bits(leadingZeroBits);
+		uint32_t codeNum = (1 << leadingZeroBits) - 1 + read_bits(leadingZeroBits);
 		return codeNum;
 	}
 	//9.1.1 Mapping process for signed Exp - Golomb codes
 	int32_t se() {
 		uint32_t  k = ue();
 		return (k % 2 == 1 ? 1 : -1) * ceil(ue() / 2);
+	}
+	// 9.3 CABAC parsing process for slice data
+	int32_t ae() {
+		//TODO
+		return 0;
 	}
 	// 7.3.2 Raw byte sequence payloads and RBSP trailing bits syntax
 	// 7.3.2.1 Sequence parameter set RBSP syntax
@@ -486,7 +624,6 @@ private:
 	void seq_parameter_set_svc_extension() {
 		inter_layer_deblocking_filter_control_present_flag = read_bits(1);// 0 u(1)
 		extended_spatial_scalability_idc = read_bits(2);// extended_spatial_scalability_idc 0 u(2)
-		uint32_t ChromaArrayType = getChromaArrayType();
 		if (ChromaArrayType == 1 || ChromaArrayType == 2)
 			chroma_phase_x_plus1_flag = read_bits(1);// chroma_phase_x_plus1_flag 0 u(1)
 		if (ChromaArrayType == 1)
@@ -555,22 +692,522 @@ private:
 			vui_ext_pic_struct_present_flag.push_back(read_bits(1));//	vui_ext_pic_struct_present_flag[i] 0 u(1)
 		}
 	}
-
+	// 7.3.2.8 Slice layer without partitioning RBSP syntax
+	void slice_layer_without_partitioning_rbsp() {
+		slice_header();
+		slice_data();// /* all categories of slice_data( ) syntax */ 2 | 3 | 4
+		//rbsp_slice_trailing_bits();// 2
+	}
 	// 7.3.2.11 RBSP trailing bits syntax
 	void rbsp_trailing_bits() {
 		read_bits(1);//rbsp_stop_one_bit /* equal to 1 */ All f(1)
 		while (!byte_aligned())
 			read_bits(1);//rbsp_alignment_zero_bit /* equal to 0 */ All f(1)
 	}
+	// 7.3.3 Slice header syntax
+	uint32_t first_mb_in_slice = 0;
+	// Table 7-6 – Name association to slice_type
+	uint32_t slice_type = 0;
+	//uint32_t pic_parameter_set_id = 0;
+	uint32_t colour_plane_id = 0;
+	uint32_t frame_num = 0;
+	bool field_pic_flag = false;
+	bool bottom_field_flag = false;
+	uint32_t idr_pic_id = 0;
+	uint32_t pic_order_cnt_lsb = 0;
+	int32_t delta_pic_order_cnt_bottom = 0;
+	vector<int32_t> delta_pic_order_cnt = vector<int32_t>();
+	uint32_t redundant_pic_cnt = 0;
+	bool direct_spatial_mv_pred_flag = false;
+	bool num_ref_idx_active_override_flag = false;
+	uint32_t num_ref_idx_l0_active_minus1 = 0;
+	uint32_t num_ref_idx_l1_active_minus1 = 0;
+	uint32_t cabac_init_idc = 0;
+	int32_t slice_qp_delta = 0;
+	bool sp_for_switch_flag = false;
+	int32_t slice_qs_delta = 0;
+	uint32_t disable_deblocking_filter_idc = 0;
+	int32_t slice_alpha_c0_offset_div2 = 0;
+	int32_t slice_beta_offset_div2 = 0;
+	uint32_t slice_group_change_cycle = 0;
+	void slice_header() {
+		first_mb_in_slice = ue();
+		slice_type = ue();
+		pic_parameter_set_id = ue();
+		if (separate_colour_plane_flag == 1)
+			colour_plane_id = read_bits(2);
+		frame_num = read_bits(log2_max_frame_num_minus4 + 4);
+		if (!frame_mbs_only_flag) {
+			field_pic_flag = read_bits(1);
+			if (field_pic_flag)
+				bottom_field_flag = read_bits(1);
+		}
+		if (IdrPicFlag)
+			idr_pic_id = ue();
+		if (pic_order_cnt_type == 0) {
+			pic_order_cnt_lsb = read_bits(log2_max_pic_order_cnt_lsb_minus4 + 4);
+			if (bottom_field_pic_order_in_frame_present_flag && !field_pic_flag)
+				delta_pic_order_cnt_bottom = se();
+
+		}
+		if (pic_order_cnt_type == 1 && !delta_pic_order_always_zero_flag) {
+			delta_pic_order_cnt.push_back(se());
+			if (bottom_field_pic_order_in_frame_present_flag && !field_pic_flag)
+				delta_pic_order_cnt.push_back(se());
+		}
+		if (redundant_pic_cnt_present_flag)
+			redundant_pic_cnt = ue();
+		if (sliceTypeCheck(B))
+			direct_spatial_mv_pred_flag = read_bits(1);
+		if (sliceTypeCheck(P) || sliceTypeCheck(SP) || sliceTypeCheck(B)) {
+			num_ref_idx_active_override_flag = read_bits(1);
+			if (num_ref_idx_active_override_flag) {
+				num_ref_idx_l0_active_minus1 = ue();
+				if (sliceTypeCheck(B))
+					num_ref_idx_l1_active_minus1 = ue();
+			}
+		}
+		if (nal_unit_type == 20 || nal_unit_type == 21)
+			ref_pic_list_mvc_modification();// /* specified in Annex G */ 2
+		else
+			ref_pic_list_modification();
+		if ((weighted_pred_flag && (sliceTypeCheck(P) || sliceTypeCheck(SP))) ||
+			(weighted_bipred_idc == 1 && sliceTypeCheck(B)))
+			pred_weight_table();
+		if (nal_ref_idc != 0)
+			dec_ref_pic_marking();
+		if (entropy_coding_mode_flag && sliceTypeCheck(I) && sliceTypeCheck(SI))
+			cabac_init_idc = ue();
+		slice_qp_delta = se();
+		if (sliceTypeCheck(SP) || sliceTypeCheck(SI)) {
+			if (sliceTypeCheck(SP))
+				sp_for_switch_flag = read_bits(1);
+			slice_qs_delta = se();
+		}
+		if (deblocking_filter_control_present_flag) {
+			disable_deblocking_filter_idc = ue();
+			if (disable_deblocking_filter_idc != 1) {
+				slice_alpha_c0_offset_div2 = se();
+				slice_beta_offset_div2 = se();
+			}
+		}
+		if (num_slice_groups_minus1 > 0 &&
+			slice_group_map_type >= 3 && slice_group_map_type <= 5)
+			slice_group_change_cycle = read_bits(ceil(log2(PicSizeInMapUnits / SliceGroupChangeRate + 1))); //Ceil( Log2( PicSizeInMapUnits ÷ SliceGroupChangeRate + 1 ) ) 
+	}
+
+	// 7.3.3.1 Reference picture list modification syntax
+	bool ref_pic_list_modification_flag_l0 = false;
+	bool ref_pic_list_modification_flag_l1 = false;
+	uint32_t modification_of_pic_nums_idc = 0;
+	uint32_t abs_diff_pic_num_minus1 = 0;
+	uint32_t long_term_pic_num = 0;
+	void ref_pic_list_modification() {
+		if (slice_type % 5 != 2 && slice_type % 5 != 4) {
+			ref_pic_list_modification_flag_l0 = read_bits(1);
+			if (ref_pic_list_modification_flag_l0)
+				do {
+					modification_of_pic_nums_idc = ue();
+					if (modification_of_pic_nums_idc == 0 ||
+						modification_of_pic_nums_idc == 1)
+						abs_diff_pic_num_minus1 = ue();
+					else if (modification_of_pic_nums_idc == 2)
+						long_term_pic_num = ue();
+				} while (modification_of_pic_nums_idc != 3);
+		}
+		if (slice_type % 5 == 1) {
+			ref_pic_list_modification_flag_l1 = read_bits(1);
+			if (ref_pic_list_modification_flag_l1)
+				do {
+					modification_of_pic_nums_idc = ue();
+					if (modification_of_pic_nums_idc == 0 ||
+						modification_of_pic_nums_idc == 1)
+						abs_diff_pic_num_minus1 = ue();
+					else if (modification_of_pic_nums_idc == 2)
+						long_term_pic_num = ue();
+				} while (modification_of_pic_nums_idc != 3);
+		}
+	}
+	// 7.3.3.2 Prediction weight table syntax
+	uint32_t luma_log2_weight_denom = 0;
+	uint32_t chroma_log2_weight_denom = 0;
+	bool luma_weight_l0_flag = false;
+	vector<int32_t> luma_weight_l0 = vector<int32_t>();
+	vector<int32_t> luma_offset_l0 = vector<int32_t>();
+	bool chroma_weight_l0_flag = false;
+	vector<vector<int32_t>> chroma_weight_l0 = vector<vector<int32_t>>();
+	vector<vector<int32_t>> chroma_offset_l0 = vector<vector<int32_t>>();
+	bool luma_weight_l1_flag = false;
+	vector<int32_t> luma_weight_l1 = vector<int32_t>();
+	vector<int32_t> luma_offset_l1 = vector<int32_t>();
+	bool chroma_weight_l1_flag = false;
+	vector<vector<int32_t>> chroma_weight_l1 = vector<vector<int32_t>>();
+	vector<vector<int32_t>> chroma_offset_l1 = vector<vector<int32_t>>();
+	void pred_weight_table() {
+		luma_log2_weight_denom = ue();
+		if (ChromaArrayType != 0)
+			chroma_log2_weight_denom = ue();
+		for (size_t i = 0; i <= num_ref_idx_l0_active_minus1; i++) {
+			luma_weight_l0_flag = read_bits(1);
+			if (luma_weight_l0_flag) {
+				luma_weight_l0.push_back(se());
+				luma_offset_l0.push_back(se());
+			}
+			chroma_weight_l0.push_back(vector<int32_t>());
+			chroma_offset_l0.push_back(vector<int32_t>());
+			if (ChromaArrayType != 0) {
+				chroma_weight_l0_flag = read_bits(1);
+				if (chroma_weight_l0_flag)
+					for (size_t j = 0; j < 2; j++) {
+						chroma_weight_l0[i].push_back(se());
+						chroma_offset_l0[i].push_back(se());
+					}
+			}
+		}
+		if (slice_type % 5 == 1)
+			for (size_t i = 0; i <= num_ref_idx_l1_active_minus1; i++) {
+				luma_weight_l1_flag = read_bits(1);
+				if (luma_weight_l1_flag) {
+					luma_weight_l1.push_back(se());
+					luma_offset_l1.push_back(se());
+				}
+				chroma_weight_l1.push_back(vector<int32_t>());
+				chroma_offset_l1.push_back(vector<int32_t>());
+				if (ChromaArrayType != 0) {
+					chroma_weight_l1_flag = read_bits(1);
+					if (chroma_weight_l1_flag)
+						for (size_t j = 0; j < 2; j++) {
+							chroma_weight_l1[i].push_back(se());
+							chroma_offset_l1[i].push_back(se());
+
+						}
+				}
+			}
+	}
+	//7.3.3.3 Decoded reference picture marking syntax
+
+	bool no_output_of_prior_pics_flag = false;
+	bool long_term_reference_flag = false;
+	bool adaptive_ref_pic_marking_mode_flag = false;
+	uint32_t memory_management_control_operation = 0;
+	uint32_t difference_of_pic_nums_minus1 = 0;
+	uint32_t long_term_frame_idx = 0;
+	uint32_t max_long_term_frame_idx_plus1 = 0;
+	void dec_ref_pic_marking() {
+		if (IdrPicFlag) {
+			no_output_of_prior_pics_flag = read_bits(1);
+			long_term_reference_flag = read_bits(1);
+		}
+		else {
+			adaptive_ref_pic_marking_mode_flag = read_bits(1);
+			if (adaptive_ref_pic_marking_mode_flag)
+				do {
+					memory_management_control_operation = ue();
+					if (memory_management_control_operation == 1 ||
+						memory_management_control_operation == 3)
+						difference_of_pic_nums_minus1 = ue();
+					if (memory_management_control_operation == 2)
+						long_term_pic_num = ue();
+					if (memory_management_control_operation == 3 ||
+						memory_management_control_operation == 6)
+						long_term_frame_idx = ue();
+					if (memory_management_control_operation == 4)
+						max_long_term_frame_idx_plus1 = ue();
+				} while (memory_management_control_operation != 0);
+		}
+	}
+	// 7.3.4 Slice data syntax
+	bool cabac_alignment_one_bit = false;
+	uint32_t mb_skip_run = 0;
+	bool mb_skip_flag = 0;
+	bool mb_field_decoding_flag = false;
+	bool end_of_slice_flag = 0;
+	uint32_t CurrMbAddr = 0;
+	void slice_data() {
+		if (entropy_coding_mode_flag)
+			while (!byte_aligned())
+				cabac_alignment_one_bit = read_bits(1);
+		CurrMbAddr = first_mb_in_slice * (1 + MbaffFrameFlag);
+		bool moreDataFlag = 1;
+		bool prevMbSkipped = 0;
+		calcMapUnitToSliceGroupMap();
+		do {
+			if (slice_type != I && slice_type != SI)
+				if (!entropy_coding_mode_flag) {
+					mb_skip_run = ue();
+					prevMbSkipped = (mb_skip_run > 0);
+					for (size_t i = 0; i < mb_skip_run; i++)
+						CurrMbAddr = NextMbAddress(CurrMbAddr);
+					if (mb_skip_run > 0)
+						moreDataFlag = more_rbsp_data();
+				}
+				else {
+					mb_skip_flag = ae();
+					moreDataFlag = !mb_skip_flag;
+				}
+			if (moreDataFlag) {
+				if (MbaffFrameFlag && (CurrMbAddr % 2 == 0 ||
+					(CurrMbAddr % 2 == 1 && prevMbSkipped)))
+					mb_field_decoding_flag = read_bits(1); // mb_field_decoding_flag 2 u(1) | ae(v)
+				macroblock_layer();
+			}
+			if (!entropy_coding_mode_flag)
+				moreDataFlag = more_rbsp_data();
+			else {
+				if (slice_type != I && slice_type != SI)
+					prevMbSkipped = mb_skip_flag;
+				if (MbaffFrameFlag && CurrMbAddr % 2 == 0)
+					moreDataFlag = 1;
+				else {
+					end_of_slice_flag = ae();
+					moreDataFlag = !end_of_slice_flag;
+				}
+			}
+			CurrMbAddr = NextMbAddress(CurrMbAddr);
+		} while (moreDataFlag);
+	}
+	// 7.3.5 Macroblock layer syntax
+	uint32_t mb_type = I_NxN;
+	bool pcm_alignment_zero_bit = false;
+	vector<uint32_t> pcm_sample_luma = vector<uint32_t>();
+	vector<uint32_t> pcm_sample_chroma = vector<uint32_t>();
+	bool transform_size_8x8_flag = false;
+	int32_t coded_block_pattern = 0;
+	int32_t mb_qp_delta = 0;
+
+	void macroblock_layer() {
+		mb_type = ue();// ue(v) | ae(v)
+		if (mb_type == I_PCM) {
+			while (!byte_aligned())
+				pcm_alignment_zero_bit = read_bits(1);
+			for (size_t i = 0; i < 256; i++)
+				pcm_sample_luma.push_back(read_bits(BitDepthY));
+			for (size_t i = 0; i < 2 * MbWidthC * MbHeightC; i++)
+				pcm_sample_chroma.push_back(read_bits(BitDepthC));
+		}
+		else {
+			//bool noSubMbPartSizeLessThan8x8Flag = 1;
+			//if (mb_type != I_NxN &&
+			//	MbPartPredMode(mb_type, 0) != Intra_16x16 &&
+			//	NumMbPart(mb_type) == 4) {
+			//	sub_mb_pred(mb_type) 2
+			//		for (mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
+			//			if (sub_mb_type[mbPartIdx] != B_Direct_8x8) {
+			//				if (NumSubMbPart(sub_mb_type[mbPartIdx]) > 1)
+			//					noSubMbPartSizeLessThan8x8Flag = 0
+			//			}
+			//			else if (!direct_8x8_inference_flag)
+			//				noSubMbPartSizeLessThan8x8Flag = 0
+			//}
+			//else {
+			//	if (transform_8x8_mode_flag&& mb_type = = I_NxN)
+			//		transform_size_8x8_flag 2 u(1) | ae(v)
+			//		mb_pred(mb_type) 2
+			//}
+			//if (MbPartPredMode(mb_type, 0) != Intra_16x16) {
+			//	coded_block_pattern 2 me(v) | ae(v)
+			//		if (CodedBlockPatternLuma > 0 &&
+			//			transform_8x8_mode_flag && mb_type != I_NxN &&
+			//			noSubMbPartSizeLessThan8x8Flag &&
+			//			(mb_type != B_Direct_16x16 | | direct_8x8_inference_flag))
+			//			transform_size_8x8_flag 2 u(1) | ae(v)
+			//}
+			//if (CodedBlockPatternLuma > 0 | | CodedBlockPatternChroma > 0 | |
+			//	MbPartPredMode(mb_type, 0) = = Intra_16x16) {
+			//	mb_qp_delta 2 se(v) | ae(v)
+			//		residual(0, 15) 3 | 4
+			//}
+		}
+	}
+	// 7.3.5.1 Macroblock prediction syntax
+	// Table 7-11 – Macroblock types for I slice
+	// NumMbPart(mb_type)|MbPartPredMode(mb_type, 0)|MbPartPredMode	(mb_type, 1)|MbPartWidth(mb_type)|MbPartHeight(mb_type)
+// Table 7-13 – Macroblock type values 0 to 4 for P and SP slices
+	int TableP[6][5] = {
+	{1,Pred_L0,na,16,16}	,
+	{2,Pred_L0,Pred_L0,16,8},
+	{2,Pred_L0,Pred_L0,8,16},
+	{4,na,na,8,8}			,
+	{4,na,na,8,8}			,
+	{1,Pred_L0,na,16,16}	,
+	};
+	// Table 7 - 14 – Macroblock type values 0 to 22 for B slices
+	int TableB[24][5] =
+	{
+	{na,Direct,na,8,8},
+	{1,Pred_L0,na,16,16}	,
+	{1,Pred_L1,na,16,16}	,
+	{1,BiPred,na,16,16}		,
+	{2,Pred_L0,Pred_L0,16,8},
+	{2,Pred_L0,Pred_L0,8,16},
+	{2,Pred_L1,Pred_L1,16,8},
+	{2,Pred_L1,Pred_L1,8,16},
+	{2,Pred_L0,Pred_L1,16,8},
+	{2,Pred_L0,Pred_L1,8,16},
+	{2,Pred_L1,Pred_L0,16,8},
+	{2,Pred_L1,Pred_L0,8,16},
+	{2,Pred_L0,BiPred,16,8}	,
+	{2,Pred_L0,BiPred,8,16}	,
+	{2,Pred_L1,BiPred,16,8}	,
+	{2,Pred_L1,BiPred,8,16}	,
+	{2,BiPred,Pred_L0,16,8}	,
+	{2,BiPred,Pred_L0,8,16}	,
+	{2,BiPred,Pred_L1,16,8}	,
+	{2,BiPred,Pred_L1,8,16}	,
+	{2,BiPred,BiPred,16,8}	,
+	{2,BiPred,BiPred,8,16}	,
+	{4,na,na,8,8}			,
+	{na,Direct,na,8,8}		,
+	};
+	int MbPartPredMode(uint32_t mb_type, int n) {
+		if (n == 0) {
+			if (sliceTypeCheck(I)) {
+				if (mb_type == I_NxN) return transform_size_8x8_flag == 0 ? Intra_4x4 : Intra_8x8;
+				else if (mb_type == I_PCM) return na;
+				else return Intra_16x16;
+			}
+			else if (sliceTypeCheck(P) || sliceTypeCheck(SP)) {
+				return TableP[mb_type][1];
+			}
+			else if (sliceTypeCheck(B)) {
+				return TableB[mb_type][1];
+			}
+		}
+		return na;
+	}
+
+
+	uint32_t NumMbPart(int mb_type) {
+		if (sliceTypeCheck(P) || sliceTypeCheck(SP)) {
+			return TableP[mb_type][0];
+		}
+		else if (sliceTypeCheck(B)) {
+			return TableB[mb_type][0];
+		}
+		return na;
+	}
+
+
 #pragma endregion
 #pragma region 7.4.2 Raw byte sequence payloads and RBSP trailing bits semantics
 	//– If separate_colour_plane_flag is equal to 0, ChromaArrayType is set equal to chroma_format_idc.
-//– Otherwise(separate_colour_plane_flag is equal to 1), ChromaArrayType is set equal to 0.
+	//– Otherwise(separate_colour_plane_flag is equal to 1), ChromaArrayType is set equal to 0.
 	uint32_t getChromaArrayType() {
 		if (separate_colour_plane_flag == 0) return chroma_format_idc;
 		return 0;
 	}
 #pragma endregion
+
+#pragma region 8.2
+	size_t NextMbAddress(uint32_t n) {
+		size_t i = n + 1;
+		while (i < PicSizeInMbs && MbToSliceGroupMap(i) != MbToSliceGroupMap(n))
+			i++;
+		return  i;
+	}
+	// 8.2.2.1 Specification for interleaved slice group map type
+	vector<uint32_t> mapUnitToSliceGroupMap;
+	void calcMapUnitToSliceGroupMap() {
+		mapUnitToSliceGroupMap = vector<uint32_t>(PicSizeInMapUnits, 0);
+		size_t i, j, k, x, y, iGroup;
+		size_t sizeOfUpperLeftGroup =
+			(slice_group_change_direction_flag ? (PicSizeInMapUnits - MapUnitsInSliceGroup0) : MapUnitsInSliceGroup0); // 8-14
+
+		switch (slice_group_map_type)
+		{
+		case 0: // (8-17)
+			i = 0;
+			do
+				for (iGroup = 0; iGroup <= num_slice_groups_minus1 && i < PicSizeInMapUnits;
+					i += run_length_minus1[iGroup++] + 1)
+					for (j = 0; j <= run_length_minus1[iGroup] && i + j < PicSizeInMapUnits; j++)
+						mapUnitToSliceGroupMap[i + j] = iGroup;
+			while (i < PicSizeInMapUnits);
+			break;
+		case 1: // 8-18
+			for (i = 0; i < PicSizeInMapUnits; i++)
+				mapUnitToSliceGroupMap[i] = ((i % PicWidthInMbs) +
+					(((i / PicWidthInMbs) * (num_slice_groups_minus1 + 1)) / 2))
+				% (num_slice_groups_minus1 + 1);
+			break;
+
+		case 2: // 8-19
+			for (i = 0; i < PicSizeInMapUnits; i++)
+				mapUnitToSliceGroupMap[i] = num_slice_groups_minus1;
+			for (iGroup = num_slice_groups_minus1 - 1; iGroup >= 0; iGroup--) {
+				size_t yTopLeft = top_left[iGroup] / PicWidthInMbs;
+				size_t xTopLeft = top_left[iGroup] % PicWidthInMbs;
+				size_t yBottomRight = bottom_right[iGroup] / PicWidthInMbs;
+				size_t xBottomRight = bottom_right[iGroup] % PicWidthInMbs;
+				for (y = yTopLeft; y <= yBottomRight; y++)
+					for (x = xTopLeft; x <= xBottomRight; x++)
+						mapUnitToSliceGroupMap[y * PicWidthInMbs + x] = iGroup;
+			}
+			break;
+
+		case 3: // 8-20
+			int leftBound, topBound, rightBound, bottomBound, xDir, yDir, mapUnitVacant;
+			for (i = 0; i < PicSizeInMapUnits; i++)
+				mapUnitToSliceGroupMap[i] = 1;
+			x = (PicWidthInMbs - slice_group_change_direction_flag) / 2;
+			y = (PicHeightInMapUnits - slice_group_change_direction_flag) / 2;
+			(leftBound, topBound) = (x, y);
+			(rightBound, bottomBound) = (x, y);
+			(xDir, yDir) = (slice_group_change_direction_flag - 1, slice_group_change_direction_flag);
+			for (k = 0; k < MapUnitsInSliceGroup0; k += mapUnitVacant) {
+				mapUnitVacant = (mapUnitToSliceGroupMap[y * PicWidthInMbs + x] == 1);
+				if (mapUnitVacant)
+					mapUnitToSliceGroupMap[y * PicWidthInMbs + x] = 0;
+				if (xDir == -1 && x == leftBound) {
+					leftBound = max(leftBound - 1, 0);
+					x = leftBound;
+					(xDir, yDir) = (0, 2 * slice_group_change_direction_flag - 1);
+				}
+				else if (xDir == 1 && x == rightBound) {
+					rightBound = min(rightBound + 1, (int)PicWidthInMbs - 1);
+					x = rightBound;
+					(xDir, yDir) = (0, 1 - 2 * slice_group_change_direction_flag);
+				}
+				else if (yDir == -1 && y == topBound) {
+					topBound = max(topBound - 1, 0);
+					y = topBound;
+					(xDir, yDir) = (1 - 2 * slice_group_change_direction_flag, 0);
+				}
+				else if (yDir == 1 && y == bottomBound) {
+					bottomBound = min(bottomBound + 1, (int)PicHeightInMapUnits - 1);
+					y = bottomBound;
+					(xDir, yDir) = (2 * slice_group_change_direction_flag - 1, 0);
+				}
+				else
+					(x, y) = (x + xDir, y + yDir);
+			}
+			break;
+		case 4:// 8-21
+			for (i = 0; i < PicSizeInMapUnits; i++)
+				if (i < sizeOfUpperLeftGroup)
+					mapUnitToSliceGroupMap[i] = slice_group_change_direction_flag;
+				else
+					mapUnitToSliceGroupMap[i] = 1 - slice_group_change_direction_flag;
+			break;
+		case 5:// 8-22
+			k = 0;
+			for (j = 0; j < PicWidthInMbs; j++)
+				for (i = 0; i < PicHeightInMapUnits; i++)
+					if (k++ < sizeOfUpperLeftGroup)
+						mapUnitToSliceGroupMap[i * PicWidthInMbs + j] = slice_group_change_direction_flag;
+					else
+						mapUnitToSliceGroupMap[i * PicWidthInMbs + j] = 1 - slice_group_change_direction_flag;
+			break;
+		case 6:// 8-23
+			for (i = 0; i < PicSizeInMapUnits; i++)
+				mapUnitToSliceGroupMap[i] = slice_group_id[i];
+			break;
+		default:
+			break;
+		}
+	}
+#pragma endregion
+
 #pragma region Annex E
 #pragma region E.1 VUI syntax
 	//E.1.1 VUI parameters syntax
@@ -696,6 +1333,7 @@ private:
 	void seq_parameter_set_mvcd_extension() {}
 	void seq_parameter_set_3davc_extension() {}
 	void mvc_vui_parameters_extension() {}
+	void ref_pic_list_mvc_modification() {}
 #pragma endregion
 
 #pragma region SDL
