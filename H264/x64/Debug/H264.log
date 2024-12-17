@@ -1,9 +1,9 @@
 ﻿  H264.cpp
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(203,1): warning C4554: '<<': 檢查運算子優先順序找出可能發生的錯誤; 使用括號釐清順序
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(209,32): warning C4244: 'return': 將 'double' 轉換為 'int32_t'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(338,32): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(451,45): warning C4244: '引數': 將 'double' 轉換為 'size_t'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(771,42): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(771,39): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(771,36): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(189,1): warning C4554: '<<': 檢查運算子優先順序找出可能發生的錯誤; 使用括號釐清順序
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(195,32): warning C4244: 'return': 將 'double' 轉換為 'int32_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(324,32): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(437,45): warning C4244: '引數': 將 'double' 轉換為 'size_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(757,42): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(757,39): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(757,36): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
   H264.vcxproj -> D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\x64\Debug\H264.exe

@@ -6,6 +6,7 @@
 #include <string>
 #include <cmath>
 #include "assert.h" 
+#include <iomanip>
 //#define DEBUG
 using namespace std;
 
@@ -19,23 +20,11 @@ public:
 		this->byteStream = vector<uint8_t>(std::istreambuf_iterator<char>(inputFile), {});
 		inputFile.close();
 		init();
-		int cc = 0;
-		while (more_data_in_byte_stream() && index < byteStream.size() - 4 && isRunning) {
-			if (byteStream[index] == 0x00 && byteStream[index + 1] == 0x00 && byteStream[index + 2] == 0x00 && byteStream[index + 3] == 0x01) {
-				cout << "NAL" << cc++ << ",BYTE" << index << endl;
-				index += 4;
-			}
-			else if (byteStream[index] == 0x00 && byteStream[index + 1] == 0x00 && byteStream[index + 2] == 0x01) {
-				cout << "NAL" << cc++ << ",BYTE" << index << endl;
-				index += 3;
-			}
-			else {
-				index++;
-			}
-
-			//byte_stream_nal_unit(0);
-			//SDLRender();
+		while (more_data_in_byte_stream()) {
+			byte_stream_nal_unit();
 		}
+		cout << "END" << endl;
+		//SDLRender();
 	}
 private:
 	void init() {
@@ -44,15 +33,16 @@ private:
 	}
 
 #pragma region NAL
+	int cc = 0;
 	// B.1.1 Byte stream NAL unit syntax
-	void byte_stream_nal_unit(int NumBytesInNALunit) {
+	void byte_stream_nal_unit() {
 		while (next_bits(24) != 0x000001 &&
-			next_bits(32) != 0x00000001)
+			next_bits(32) != 0x00000001) 
 			read_bits(8);//leading_zero_8bits /* equal to 0x00 */ f(8)
 		if (next_bits(24) != 0x000001)
 			read_bits(8);//zero_byte /* equal to 0x00 */ f(8)
-		read_bits(24); //start_code_prefix_one_3bytes /* equal to 0x000001 */ f(24)
-		nal_unit(NumBytesInNALunit);
+		read_bits(24);//start_code_prefix_one_3bytes /* equal to 0x000001 */ f(24)
+		nal_unit();
 		while (more_data_in_byte_stream() &&
 			next_bits(24) != 0x000001 &&
 			next_bits(32) != 0x00000001)
@@ -60,20 +50,19 @@ private:
 	}
 	//7.3.1 NAL unit syntax
 	uint32_t nal_ref_idc = 0;
+	// Table 7-1 – NAL unit type codes, syntax element categories, and NAL unit type classes
 	uint32_t nal_unit_type = 0;
 	uint32_t nalUnitHeaderBytes = 0;
-	void nal_unit(int NumBytesInNALunit) {
+	bool svc_extension_flag = false;
+	bool avc_3d_extension_flag = false;
+	void nal_unit() {
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
+		cout << "NLU " << cc++ << " TYPE " << nal_unit_type  << endl;
 
-		RBSP = vector<uint8_t>();//uint32_t	NumBytesInRBSP = 0;
 		nalUnitHeaderBytes = 1;
-		if (nal_unit_type == 14 || nal_unit_type == 20 ||
-			nal_unit_type == 21) {
-			bool svc_extension_flag = false;
-			bool avc_3d_extension_flag = false;
-
+		if (nal_unit_type == 14 || nal_unit_type == 20 || nal_unit_type == 21) {
 			if (nal_unit_type != 21)
 				svc_extension_flag = read_bits(1);// All u(1)
 			else
@@ -91,11 +80,13 @@ private:
 				nalUnitHeaderBytes += 3;
 			}
 		}
-		for (size_t i = nalUnitHeaderBytes; i < NumBytesInNALunit; i++) {
-			if (i + 2 < NumBytesInNALunit && next_bits(24) == 0x000003) {
+
+		while (more_data_in_byte_stream() &&
+			next_bits(24) != 0x000001 &&
+			next_bits(32) != 0x00000001) {
+			if (next_bits(24) == 0x000003) {
 				RBSP.push_back(read_bits(8));//rbsp_byte[NumBytesInRBSP++]  All b(8)
 				RBSP.push_back(read_bits(8));//rbsp_byte[NumBytesInRBSP++]  All b(8)
-				i += 2;
 				read_bits(8);// emulation_prevention_three_byte /* equal to 0x03 */ All f(8)
 			}
 			else
@@ -159,9 +150,7 @@ private:
 			bits = (bits << 8) | byteStream[index++];
 			bitsIndex -= 8;
 		}
-		RBSP = vector<uint8_t>();
 	}
-
 	// 7.2 Specification of syntax functions, categories, and descriptors
 	bool byte_aligned() {
 		return bitsIndex % 8 == 0;
@@ -177,15 +166,14 @@ private:
 	bool more_rbsp_trailing_data() {
 		return RBSP.size() > 0;
 	}
-	uint32_t next_bits(size_t n) {
+	const uint32_t next_bits(size_t n) {
 		if (n == 0) return 0;
-		return bits >> (32 - n);
+		return (bits<< bitsIndex) >> (32 - n);
 	}
 	// f(n)  u(n) b(8) p.68
-	uint32_t read_bits(size_t n) {
+	const uint32_t read_bits(size_t n) {
 		if (n == 0) return 0;
-		uint32_t num = next_bits(n);
-		bits <<= n;
+		const uint32_t num = next_bits(n);
 		bitsIndex += n;
 		while (bitsIndex >= 8 && more_data_in_byte_stream()) {
 			bits = (bits << 8) | byteStream[index++];
@@ -785,7 +773,6 @@ private:
 
 
 int main(int argc, char* argv[]) {
-
 
 	H264Decoder video("video/output.h264");
 
