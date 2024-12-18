@@ -45,7 +45,8 @@ public:
 		if (!inputFile) {
 			cerr << "無法打開檔案！" << endl;
 		}
-		this->byteStream = vector<uint8_t>(std::istreambuf_iterator<char>(inputFile), {});
+		this->fileByteStream = vector<uint8_t>(std::istreambuf_iterator<char>(inputFile), {});
+		this->byteStream = &fileByteStream;
 		inputFile.close();
 		init();
 		while (more_data_in_byte_stream()) {
@@ -169,6 +170,7 @@ private:
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
+		if(nal_unit_type != 1)
 		cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
 
 		nalUnitHeaderBytes = 1;
@@ -190,7 +192,7 @@ private:
 				nalUnitHeaderBytes += 3;
 			}
 		}
-
+		RBSP = vector<uint8_t>();
 		while (more_data_in_byte_stream() &&
 			next_bits(24) != 0x000001 &&
 			next_bits(32) != 0x00000001) {
@@ -203,16 +205,25 @@ private:
 			else
 				RBSP.push_back(read_bits(8)); //rbsp_byte[NumBytesInRBSP++] All b(8)
 		}
+		uint32_t fileIndex = index;
+		uint32_t fileBits = bits;
+		uint32_t fileBitsIndex = bitsIndex;
+
+		byteStream = &RBSP;
+		bitsInit();
+		typeHandler();
+		byteStream = &fileByteStream;
+		bitsInit(fileIndex, fileBits, fileBitsIndex);
 	}
 
 	void typeHandler() {
 		switch (nal_unit_type)
 		{
 		case 1:
-			slice_layer_without_partitioning_rbsp();
+			//slice_layer_without_partitioning_rbsp();
 			break;
 		case 5:
-			slice_layer_without_partitioning_rbsp();
+			//slice_layer_without_partitioning_rbsp();
 			break;
 		case 6:
 			sei_rbsp();
@@ -270,18 +281,19 @@ private:
 #pragma endregion
 
 #pragma region bits
-	vector<uint8_t> byteStream;
+	vector<uint8_t> fileByteStream;
+	vector<uint8_t>* byteStream;
+	vector<uint8_t> RBSP;
 	size_t index;
 	uint32_t  bits = 0;
 	size_t bitsIndex = 0;
-	vector<uint8_t> RBSP;
 	bool RBSPMode = false;
-	void bitsInit() {
-		index = 0;
-		bitsIndex = 32;
-		bits = 0;
-		while (bitsIndex >= 8) {
-			bits = (bits << 8) | byteStream[index++];
+	void bitsInit(size_t i=0,uint32_t b=0,size_t bi=32) {
+		index = i;
+		bitsIndex = bi;
+		bits = b;
+		while (bitsIndex >= 8 && more_data_in_byte_stream()) {
+			bits = (bits << 8) | (*byteStream)[index++];
 			bitsIndex -= 8;
 		}
 	}
@@ -290,12 +302,10 @@ private:
 		return bitsIndex % 8 == 0;
 	}
 	bool more_data_in_byte_stream() {
-		return (index < byteStream.size());
+		return (index < (*byteStream).size());
 	}
 	bool more_rbsp_data() {
-		if (RBSP.size() == 0) return false;
-		// TODO
-		return false;
+		return more_data_in_byte_stream();
 	}
 	bool more_rbsp_trailing_data() {
 		return RBSP.size() > 0;
@@ -310,7 +320,7 @@ private:
 		const uint32_t num = next_bits(n);
 		bitsIndex += n;
 		while (bitsIndex >= 8 && more_data_in_byte_stream()) {
-			bits = (bits << 8) | byteStream[index++];
+			bits = (bits << 8) | (*byteStream)[index++];
 			bitsIndex -= 8;
 		}
 		return num;
@@ -326,7 +336,7 @@ private:
 	//9.1.1 Mapping process for signed Exp - Golomb codes
 	int32_t se() {
 		uint32_t  k = ue();
-		return (k % 2 == 1 ? 1 : -1) * ceil(ue() / 2);
+		return (k % 2 == 1 ? 1 : -1) * ceil(k / 2);
 	}
 	//Table 9-4 – Assignment of codeNum to values of coded_block_pattern for macroblock prediction modes
 	// (a) ChromaArrayType is equal to 1 or 2
@@ -473,6 +483,7 @@ private:
 		reserved_zero_2bits = read_bits(2);//reserved_zero_2bits /* equal to 0 */ 0 u(2)
 		assert(reserved_zero_2bits == 0);
 		level_idc = read_bits(8);//level_idc 0 u(8)
+
 		seq_parameter_set_id = ue();//seq_parameter_set_id 0 ue(v)
 		if (profile_idc == 100 || profile_idc == 110 ||
 			profile_idc == 122 || profile_idc == 244 || profile_idc == 44 ||
@@ -513,7 +524,7 @@ private:
 				offset_for_ref_frame.push_back(se());//offset_for_ref_frame[i] 0 se(v)
 		}
 		max_num_ref_frames = ue();//max_num_ref_frames 0 ue(v)
-		read_bits(1);//	gaps_in_frame_num_value_allowed_flag 0 u(1)
+		gaps_in_frame_num_value_allowed_flag = read_bits(1);//	gaps_in_frame_num_value_allowed_flag 0 u(1)
 		pic_width_in_mbs_minus1 = ue();//	pic_width_in_mbs_minus1 0 ue(v)
 		pic_height_in_map_units_minus1 = ue();//	pic_height_in_map_units_minus1 0 ue(v)
 		frame_mbs_only_flag = read_bits(1);//	frame_mbs_only_flag 0 u(1)
@@ -635,6 +646,7 @@ private:
 		entropy_coding_mode_flag = read_bits(1);
 		bottom_field_pic_order_in_frame_present_flag = read_bits(1);
 		num_slice_groups_minus1 = ue();
+		assert(num_slice_groups_minus1 == 0);
 		if (num_slice_groups_minus1 > 0) {
 			slice_group_map_type = ue();
 			if (slice_group_map_type == 0)
@@ -667,8 +679,8 @@ private:
 		deblocking_filter_control_present_flag = read_bits(1);
 		constrained_intra_pred_flag = read_bits(1);
 		redundant_pic_cnt_present_flag = read_bits(1);
-
-		if (more_rbsp_data()) {
+		assert(redundant_pic_cnt_present_flag == 0);
+		if (more_rbsp_data()) {  // shall not
 			transform_8x8_mode_flag = read_bits(1);
 			pic_scaling_matrix_present_flag = read_bits(1);
 			if (pic_scaling_matrix_present_flag)
@@ -683,7 +695,6 @@ private:
 
 				}
 			second_chroma_qp_index_offset = se();
-
 		}
 		rbsp_trailing_bits();
 	}
@@ -1198,6 +1209,7 @@ private:
 		size_t i, j, k, x, y, iGroup;
 		size_t sizeOfUpperLeftGroup =
 			(slice_group_change_direction_flag ? (PicSizeInMapUnits - MapUnitsInSliceGroup0) : MapUnitsInSliceGroup0); // 8-14
+		int leftBound = 0, topBound = 0, rightBound = 0, bottomBound = 0, xDir = 0, yDir = 0, mapUnitVacant = 0;
 
 		switch (slice_group_map_type)
 		{
@@ -1232,7 +1244,6 @@ private:
 			break;
 
 		case 3: // 8-20
-			int leftBound, topBound, rightBound, bottomBound, xDir, yDir, mapUnitVacant;
 			for (i = 0; i < PicSizeInMapUnits; i++)
 				mapUnitToSliceGroupMap[i] = 1;
 			x = (PicWidthInMbs - slice_group_change_direction_flag) / 2;
