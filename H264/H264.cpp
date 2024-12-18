@@ -198,6 +198,7 @@ private:
 				RBSP.push_back(read_bits(8));//rbsp_byte[NumBytesInRBSP++]  All b(8)
 				RBSP.push_back(read_bits(8));//rbsp_byte[NumBytesInRBSP++]  All b(8)
 				read_bits(8);// emulation_prevention_three_byte /* equal to 0x03 */ All f(8)
+
 			}
 			else
 				RBSP.push_back(read_bits(8)); //rbsp_byte[NumBytesInRBSP++] All b(8)
@@ -214,7 +215,7 @@ private:
 			slice_layer_without_partitioning_rbsp();
 			break;
 		case 6:
-			//sei_rbsp();
+			sei_rbsp();
 			break;
 		case 7:
 			seq_parameter_set_rbsp();
@@ -326,6 +327,87 @@ private:
 	int32_t se() {
 		uint32_t  k = ue();
 		return (k % 2 == 1 ? 1 : -1) * ceil(ue() / 2);
+	}
+	//Table 9-4 – Assignment of codeNum to values of coded_block_pattern for macroblock prediction modes
+	// (a) ChromaArrayType is equal to 1 or 2
+	const uint32_t table94a[48][2] = {
+	{47, 0},
+	{31,16 },
+	{15,1 },
+	{0,2 },
+	{23,4 },
+	{27,8 },
+	{29,32 },
+	{30,3 },
+	{7,5 },
+	{11,10 },
+	{13,12 },
+	{14,15 },
+	{39,47 },
+	{43,7 },
+	{45,11 },
+	{46,13 },
+	{16,14 },
+	{3,6 },
+	{5,9 },
+	{10,31 },
+	{12,35 },
+	{19,37 },
+	{21,42 },
+	{26,44 },
+	{28,33 },
+	{35,34 },
+	{37,36 },
+	{42,40 },
+	{44,39 },
+	{1,43 },
+	{2,45 },
+	{4,46 },
+	{8,17 },
+	{17,18 },
+	{18,20 },
+	{20,24 },
+	{24,19 },
+	{6,21 },
+	{9,26 },
+	{22,28 },
+	{25,23 },
+	{32,27 },
+	{33,29 },
+	{34,30 },
+	{36,22 },
+	{40,25 },
+	{38,38 },
+	{41,41 }, };
+	// (b) ChromaArrayType is equal to 0 or 3
+	const uint32_t table94b[16][2] = {
+	{15,0},
+	{0,1},
+	{7,2},
+	{11,4},
+	{13,8},
+	{14,3},
+	{3,5},
+	{5,10},
+	{10,12},
+	{12,15},
+	{1,7},
+	{2,11},
+	{4,13},
+	{8,14},
+	{6,6},
+	{9,9},
+	};
+
+	// 9.1.2 Mapping process for coded block pattern
+	uint32_t me() {
+		//uint32_t  codeNum = ue();
+		//uint32_t predMode =  MbPartPredMode(mb_type, 0); 
+		//bool isInter = predMode == Inter;
+		//if (ChromaArrayType ==  1 || ChromaArrayType == 2) {
+		//	return table94a[][]
+		//}
+		return 0;
 	}
 	// 9.3 CABAC parsing process for slice data
 	int32_t ae() {
@@ -605,8 +687,12 @@ private:
 		}
 		rbsp_trailing_bits();
 	}
-
-
+	// 7.3.2.3 Supplemental enhancement information RBSP syntax
+	void sei_rbsp() {
+		cout << "[SKIP SEI]" << endl;
+		// SKIP SEI
+	}
+	// 7.3.2.3.1 Supplemental enhancement information message syntax
 	// F.7.3.2.1.4 Sequence parameter set SVC extension syntax
 	bool inter_layer_deblocking_filter_control_present_flag = false;
 	uint8_t extended_spatial_scalability_idc = 0;
@@ -1023,7 +1109,7 @@ private:
 	// Table 7-11 – Macroblock types for I slice
 	// NumMbPart(mb_type)|MbPartPredMode(mb_type, 0)|MbPartPredMode	(mb_type, 1)|MbPartWidth(mb_type)|MbPartHeight(mb_type)
 // Table 7-13 – Macroblock type values 0 to 4 for P and SP slices
-	int TableP[6][5] = {
+	uint32_t TableP[6][5] = {
 	{1,Pred_L0,na,16,16}	,
 	{2,Pred_L0,Pred_L0,16,8},
 	{2,Pred_L0,Pred_L0,8,16},
@@ -1032,7 +1118,7 @@ private:
 	{1,Pred_L0,na,16,16}	,
 	};
 	// Table 7 - 14 – Macroblock type values 0 to 22 for B slices
-	int TableB[24][5] =
+	uint32_t TableB[24][5] =
 	{
 	{na,Direct,na,8,8},
 	{1,Pred_L0,na,16,16}	,
@@ -1059,7 +1145,7 @@ private:
 	{4,na,na,8,8}			,
 	{na,Direct,na,8,8}		,
 	};
-	int MbPartPredMode(uint32_t mb_type, int n) {
+	uint32_t MbPartPredMode(uint32_t mb_type, int n) {
 		if (n == 0) {
 			if (sliceTypeCheck(I)) {
 				if (mb_type == I_NxN) return transform_size_8x8_flag == 0 ? Intra_4x4 : Intra_8x8;
