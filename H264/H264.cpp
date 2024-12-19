@@ -13,6 +13,8 @@ using namespace std;
 #define SliceGroupChangeRate slice_group_change_rate_minus1 + 1
 #define SubWidthC (chroma_format_idc == 1||chroma_format_idc == 2) ? 2: (chroma_format_idc == 3? 1 : 0 )
 #define SubHeightC ((chroma_format_idc == 2||chroma_format_idc == 3)&& separate_colour_plane_flag == 0) ? 1: (chroma_format_idc == 1? 2 : 0 )
+#define Clip3( x, y, z ) (z<x) ? x : (z>y) ? y : z // 5-8
+#define InverseRasterScan( a, b, c, d, e ) (e==0)?(a%(d/b))*b:(a/(d/b))*c // 5-11
 #define MbWidthC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubWidthC) // 6-1
 #define MbHeightC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubHeightC) // 6-2
 #define BitDepthY 8 + bit_depth_luma_minus8  // 7-3
@@ -32,7 +34,10 @@ using namespace std;
 #define PicHeightInSamplesL  PicHeightInMbs * 16
 #define PicHeightInSamplesC  PicHeightInMbs * MbHeightC 
 #define PicSizeInMbs  PicWidthInMbs * PicHeightInMbs
+#define SliceQPY  26 + pic_init_qp_minus26 + slice_qp_delta // 7-32
 #define MapUnitsInSliceGroup0 min( slice_group_change_cycle * SliceGroupChangeRate, PicSizeInMapUnits)// 7-36
+#define CodedBlockPatternLuma coded_block_pattern % 16 // 7-38
+#define CodedBlockPatternChroma coded_block_pattern / 16 // 7-38
 // 8-24 8-25 8-26
 #define MbToSliceGroupMap(i) (frame_mbs_only_flag == 1 || field_pic_flag == 1)\
 ? mapUnitToSliceGroupMap[i] : MbaffFrameFlag == 1 \
@@ -139,6 +144,28 @@ private:
 		Pred_L1,
 		BiPred,
 	};
+
+	enum SubMBTypeP {
+		P_L0_8x8,
+		P_L0_8x4,
+		P_L0_4x8,
+		P_L0_4x4,
+	};
+	enum SubMBTypeB {
+		B_Direct_8x8,
+		B_L0_8x8,
+		B_L1_8x8,
+		B_Bi_8x8,
+		B_L0_8x4,
+		B_L0_4x8,
+		B_L1_8x4,
+		B_L1_4x8,
+		B_Bi_8x4,
+		B_Bi_4x8,
+		B_L0_4x4,
+		B_L1_4x4,
+		B_Bi_4x4,
+	};
 	bool sliceTypeCheck(SliceType type) {
 		return slice_type % 5 == type;
 	}
@@ -170,8 +197,8 @@ private:
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
-		if(nal_unit_type != 1)
-		cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
+		if (nal_unit_type != 1)
+			cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
 
 		nalUnitHeaderBytes = 1;
 		if (nal_unit_type == 14 || nal_unit_type == 20 || nal_unit_type == 21) {
@@ -223,7 +250,7 @@ private:
 			//slice_layer_without_partitioning_rbsp();
 			break;
 		case 5:
-			//slice_layer_without_partitioning_rbsp();
+			slice_layer_without_partitioning_rbsp();
 			break;
 		case 6:
 			sei_rbsp();
@@ -288,7 +315,7 @@ private:
 	uint32_t  bits = 0;
 	size_t bitsIndex = 0;
 	bool RBSPMode = false;
-	void bitsInit(size_t i=0,uint32_t b=0,size_t bi=32) {
+	void bitsInit(size_t i = 0, uint32_t b = 0, size_t bi = 32) {
 		index = i;
 		bitsIndex = bi;
 		bits = b;
@@ -310,13 +337,13 @@ private:
 	bool more_rbsp_trailing_data() {
 		return RBSP.size() > 0;
 	}
-	const uint32_t next_bits(size_t n) {
-		if (n == 0) return 0;
+	const uint32_t next_bits(int n) {
+		if (n <= 0) return 0;
 		return (bits << bitsIndex) >> (32 - n);
 	}
 	// f(n)  u(n) b(8) p.68
-	const uint32_t read_bits(size_t n) {
-		if (n == 0) return 0;
+	const uint32_t read_bits(int n) {
+		if (n <= 0) return 0;
 		const uint32_t num = next_bits(n);
 		bitsIndex += n;
 		while (bitsIndex >= 8 && more_data_in_byte_stream()) {
@@ -332,6 +359,11 @@ private:
 			b = read_bits(1);
 		uint32_t codeNum = (1 << leadingZeroBits) - 1 + read_bits(leadingZeroBits);
 		return codeNum;
+	}
+	uint32_t te(uint32_t x) {
+		if (x > 1) return ue();
+		bool b = read_bits(1);
+		return !b;
 	}
 	//9.1.1 Mapping process for signed Exp - Golomb codes
 	int32_t se() {
@@ -419,11 +451,7 @@ private:
 		//}
 		return 0;
 	}
-	// 9.3 CABAC parsing process for slice data
-	int32_t ae() {
-		//TODO
-		return 0;
-	}
+
 	// 7.3.2 Raw byte sequence payloads and RBSP trailing bits syntax
 	// 7.3.2.1 Sequence parameter set RBSP syntax
 	void seq_parameter_set_rbsp() {
@@ -474,6 +502,7 @@ private:
 	bool UseDefaultScalingMatrix8x8Flag[12] = { false };
 	void seq_parameter_set_data() {
 		profile_idc = read_bits(8);//profile_idc 0 u(8)
+		cout << dec << (int)profile_idc << endl;
 		constraint_set0_flag = read_bits(1);//constraint_set0_flag 0 u(1)
 		constraint_set1_flag = read_bits(1);//constraint_set1_flag 0 u(1)
 		constraint_set2_flag = read_bits(1);//constraint_set2_flag 0 u(1)
@@ -528,6 +557,7 @@ private:
 		pic_width_in_mbs_minus1 = ue();//	pic_width_in_mbs_minus1 0 ue(v)
 		pic_height_in_map_units_minus1 = ue();//	pic_height_in_map_units_minus1 0 ue(v)
 		frame_mbs_only_flag = read_bits(1);//	frame_mbs_only_flag 0 u(1)
+		assert(frame_mbs_only_flag == 1);
 		if (!frame_mbs_only_flag)
 			mb_adaptive_frame_field_flag = read_bits(1);//		mb_adaptive_frame_field_flag 0 u(1)
 		direct_8x8_inference_flag = read_bits(1);//		direct_8x8_inference_flag 0 u(1)
@@ -646,7 +676,6 @@ private:
 		entropy_coding_mode_flag = read_bits(1);
 		bottom_field_pic_order_in_frame_present_flag = read_bits(1);
 		num_slice_groups_minus1 = ue();
-		assert(num_slice_groups_minus1 == 0);
 		if (num_slice_groups_minus1 > 0) {
 			slice_group_map_type = ue();
 			if (slice_group_map_type == 0)
@@ -669,6 +698,7 @@ private:
 					slice_group_id.push_back(read_bits(ceil(log2(num_slice_groups_minus1 + 1)))); //Ceil( Log2( num_slice_groups_minus1 + 1 ) ) bits.
 			}
 		}
+		calcMapUnitToSliceGroupMap();
 		num_ref_idx_l0_default_active_minus1 = ue();
 		num_ref_idx_l1_default_active_minus1 = ue();
 		weighted_pred_flag = read_bits(1);
@@ -793,6 +823,7 @@ private:
 	void slice_layer_without_partitioning_rbsp() {
 		slice_header();
 		slice_data();// /* all categories of slice_data( ) syntax */ 2 | 3 | 4
+		cout << "AA" << endl;
 		//rbsp_slice_trailing_bits();// 2
 	}
 	// 7.3.2.11 RBSP trailing bits syntax
@@ -830,6 +861,8 @@ private:
 	void slice_header() {
 		first_mb_in_slice = ue();
 		slice_type = ue();
+		assert(sliceTypeCheck(P) || sliceTypeCheck(I) || sliceTypeCheck(B));
+		cout << "SLICETYPE" << slice_type << endl;
 		pic_parameter_set_id = ue();
 		if (separate_colour_plane_flag == 1)
 			colour_plane_id = read_bits(2);
@@ -873,7 +906,7 @@ private:
 			pred_weight_table();
 		if (nal_ref_idc != 0)
 			dec_ref_pic_marking();
-		if (entropy_coding_mode_flag && sliceTypeCheck(I) && sliceTypeCheck(SI))
+		if (entropy_coding_mode_flag && !sliceTypeCheck(I) && !sliceTypeCheck(SI))
 			cabac_init_idc = ue();
 		slice_qp_delta = se();
 		if (sliceTypeCheck(SP) || sliceTypeCheck(SI)) {
@@ -1020,16 +1053,19 @@ private:
 	bool mb_field_decoding_flag = false;
 	bool end_of_slice_flag = 0;
 	uint32_t CurrMbAddr = 0;
+	vector<uint32_t> mb_typesInCurrentSlice;
+	vector<uint32_t> TotalCoeffInCurrentSlice;
 	void slice_data() {
+		mb_typesInCurrentSlice = vector<uint32_t>(PicSizeInMbs, 0);
+		TotalCoeffInCurrentSlice = vector<uint32_t>(PicSizeInMbs, 0);
 		if (entropy_coding_mode_flag)
 			while (!byte_aligned())
 				cabac_alignment_one_bit = read_bits(1);
 		CurrMbAddr = first_mb_in_slice * (1 + MbaffFrameFlag);
 		bool moreDataFlag = 1;
 		bool prevMbSkipped = 0;
-		calcMapUnitToSliceGroupMap();
 		do {
-			if (slice_type != I && slice_type != SI)
+			if (!sliceTypeCheck(I) && !sliceTypeCheck(SI))
 				if (!entropy_coding_mode_flag) {
 					mb_skip_run = ue();
 					prevMbSkipped = (mb_skip_run > 0);
@@ -1062,7 +1098,12 @@ private:
 			}
 			CurrMbAddr = NextMbAddress(CurrMbAddr);
 		} while (moreDataFlag);
+		cout << "AA";
 	}
+
+	struct MacroBlock {
+
+	};
 	// 7.3.5 Macroblock layer syntax
 	uint32_t mb_type = I_NxN;
 	bool pcm_alignment_zero_bit = false;
@@ -1074,52 +1115,573 @@ private:
 
 	void macroblock_layer() {
 		mb_type = ue();// ue(v) | ae(v)
+		mb_typesInCurrentSlice[CurrMbAddr] = mb_type;
 		if (mb_type == I_PCM) {
 			while (!byte_aligned())
 				pcm_alignment_zero_bit = read_bits(1);
 			for (size_t i = 0; i < 256; i++)
-				pcm_sample_luma.push_back(read_bits(BitDepthY));
+				pcm_sample_luma.push_back(read_bits(BitDepthY));  //  shall not  == 0
 			for (size_t i = 0; i < 2 * MbWidthC * MbHeightC; i++)
-				pcm_sample_chroma.push_back(read_bits(BitDepthC));
+				pcm_sample_chroma.push_back(read_bits(BitDepthC)); //  shall not  == 0
 		}
 		else {
-			//bool noSubMbPartSizeLessThan8x8Flag = 1;
-			//if (mb_type != I_NxN &&
-			//	MbPartPredMode(mb_type, 0) != Intra_16x16 &&
-			//	NumMbPart(mb_type) == 4) {
-			//	sub_mb_pred(mb_type) 2
-			//		for (mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
-			//			if (sub_mb_type[mbPartIdx] != B_Direct_8x8) {
-			//				if (NumSubMbPart(sub_mb_type[mbPartIdx]) > 1)
-			//					noSubMbPartSizeLessThan8x8Flag = 0
-			//			}
-			//			else if (!direct_8x8_inference_flag)
-			//				noSubMbPartSizeLessThan8x8Flag = 0
-			//}
-			//else {
-			//	if (transform_8x8_mode_flag&& mb_type = = I_NxN)
-			//		transform_size_8x8_flag 2 u(1) | ae(v)
-			//		mb_pred(mb_type) 2
-			//}
-			//if (MbPartPredMode(mb_type, 0) != Intra_16x16) {
-			//	coded_block_pattern 2 me(v) | ae(v)
-			//		if (CodedBlockPatternLuma > 0 &&
-			//			transform_8x8_mode_flag && mb_type != I_NxN &&
-			//			noSubMbPartSizeLessThan8x8Flag &&
-			//			(mb_type != B_Direct_16x16 | | direct_8x8_inference_flag))
-			//			transform_size_8x8_flag 2 u(1) | ae(v)
-			//}
-			//if (CodedBlockPatternLuma > 0 | | CodedBlockPatternChroma > 0 | |
-			//	MbPartPredMode(mb_type, 0) = = Intra_16x16) {
-			//	mb_qp_delta 2 se(v) | ae(v)
-			//		residual(0, 15) 3 | 4
-			//}
+			bool noSubMbPartSizeLessThan8x8Flag = 1;
+			if (mb_type != I_NxN &&
+				MbPartPredMode(mb_type, 0) != Intra_16x16 &&
+				NumMbPart(mb_type) == 4) {
+				sub_mb_pred(mb_type);
+				for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
+					if (sub_mb_type[mbPartIdx] != B_Direct_8x8) {
+						if (NumSubMbPart(sub_mb_type[mbPartIdx]) > 1)
+							noSubMbPartSizeLessThan8x8Flag = 0;
+					}
+					else if (!direct_8x8_inference_flag)
+						noSubMbPartSizeLessThan8x8Flag = 0;
+			}
+			else {
+				if (transform_8x8_mode_flag && mb_type == I_NxN)
+					transform_size_8x8_flag = read_bits(1);
+				mb_pred(mb_type);
+			}
+			if (MbPartPredMode(mb_type, 0) != Intra_16x16) {
+				coded_block_pattern = me();
+				if (CodedBlockPatternLuma > 0 &&
+					transform_8x8_mode_flag && mb_type != I_NxN &&
+					noSubMbPartSizeLessThan8x8Flag &&
+					(mb_type != B_Direct_16x16 || direct_8x8_inference_flag))
+					transform_size_8x8_flag = read_bits(1);
+			}
+			if (CodedBlockPatternLuma > 0 || CodedBlockPatternChroma > 0 ||
+				MbPartPredMode(mb_type, 0) == Intra_16x16) {
+				mb_qp_delta = se();
+				residual(0, 15);
+			}
 		}
 	}
 	// 7.3.5.1 Macroblock prediction syntax
+	vector<bool> prev_intra4x4_pred_mode_flag = vector<bool>();
+	vector<uint32_t> rem_intra4x4_pred_mode = vector<uint32_t>();
+	vector<bool> prev_intra8x8_pred_mode_flag = vector<bool>();
+	vector<uint32_t> rem_intra8x8_pred_mode = vector<uint32_t>();
+	uint32_t intra_chroma_pred_mode = 0;
+	vector<uint32_t> ref_idx_l0 = vector<uint32_t>();
+	vector<uint32_t> ref_idx_l1 = vector<uint32_t>();
+	vector<vector<vector<int32_t>>> mvd_l0 = vector<vector<vector<int32_t>>>();
+	vector<vector<vector<int32_t>>> mvd_l1 = vector<vector<vector<int32_t>>>();
+
+	void mb_pred(int mb_type) {
+		if (MbPartPredMode(mb_type, 0) == Intra_4x4 ||
+			MbPartPredMode(mb_type, 0) == Intra_8x8 ||
+			MbPartPredMode(mb_type, 0) == Intra_16x16) {
+			prev_intra4x4_pred_mode_flag = vector<bool>();
+			rem_intra4x4_pred_mode = vector<uint32_t>();
+			prev_intra8x8_pred_mode_flag = vector<bool>();
+			rem_intra8x8_pred_mode = vector<uint32_t>();
+			if (MbPartPredMode(mb_type, 0) == Intra_4x4)
+				for (size_t luma4x4BlkIdx = 0; luma4x4BlkIdx < 16; luma4x4BlkIdx++) {
+					prev_intra4x4_pred_mode_flag.push_back(read_bits(1));
+
+					if (!prev_intra4x4_pred_mode_flag[luma4x4BlkIdx])
+						rem_intra4x4_pred_mode.push_back(read_bits(3));
+
+				}
+			if (MbPartPredMode(mb_type, 0) == Intra_8x8)
+				for (size_t luma8x8BlkIdx = 0; luma8x8BlkIdx < 4; luma8x8BlkIdx++) {
+					prev_intra8x8_pred_mode_flag.push_back(read_bits(1));
+
+					if (!prev_intra8x8_pred_mode_flag[luma8x8BlkIdx])
+						rem_intra8x8_pred_mode.push_back(read_bits(3));
+
+				}
+			if (ChromaArrayType == 1 || ChromaArrayType == 2)
+				intra_chroma_pred_mode = ue();
+		}
+		else if (MbPartPredMode(mb_type, 0) != Direct) {
+			ref_idx_l0 = vector<uint32_t>();
+			ref_idx_l1 = vector<uint32_t>();
+			mvd_l0 = vector<vector<vector<int32_t>>>();
+			mvd_l1 = vector<vector<vector<int32_t>>>();
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+				if ((num_ref_idx_l0_active_minus1 > 0 ||
+					mb_field_decoding_flag != field_pic_flag) &&
+					MbPartPredMode(mb_type, mbPartIdx) != Pred_L1)
+				{
+					uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l0_active_minus1 : 2 * num_ref_idx_l0_active_minus1 + 1;
+					ref_idx_l0.push_back(te(x));
+				}
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+				if ((num_ref_idx_l1_active_minus1 > 0 ||
+					mb_field_decoding_flag != field_pic_flag) &&
+					MbPartPredMode(mb_type, mbPartIdx) != Pred_L0)
+				{
+					uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l1_active_minus1 : 2 * num_ref_idx_l1_active_minus1 + 1;
+					ref_idx_l1.push_back(te(x));
+				}
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+				if (MbPartPredMode(mb_type, mbPartIdx) != Pred_L1) {
+					mvd_l0.push_back(vector<vector<int32_t>>());
+					mvd_l0[mbPartIdx].push_back(vector<int32_t>());
+					for (size_t compIdx = 0; compIdx < 2; compIdx++)
+						mvd_l0[mbPartIdx][0].push_back(se());
+
+				}
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+				if (MbPartPredMode(mb_type, mbPartIdx) != Pred_L0) {
+					mvd_l1.push_back(vector<vector<int32_t>>());
+					mvd_l1[mbPartIdx].push_back(vector<int32_t>());
+					for (size_t compIdx = 0; compIdx < 2; compIdx++)
+						mvd_l1[mbPartIdx][0].push_back(se());
+				}
+		}
+	}
+
+	// 7.3.5.2 Sub - macroblock prediction syntax
+	vector<uint32_t> sub_mb_type = vector<uint32_t>();
+	void sub_mb_pred(int mb_type) {
+		sub_mb_type = vector<uint32_t>();
+		ref_idx_l0 = vector<uint32_t>();
+		ref_idx_l1 = vector<uint32_t>();
+		mvd_l0 = vector<vector<vector<int32_t>>>();
+		mvd_l1 = vector<vector<vector<int32_t>>>();
+		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
+			sub_mb_type.push_back(ue());
+		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
+			if ((num_ref_idx_l0_active_minus1 > 0 ||
+				mb_field_decoding_flag != field_pic_flag) &&
+				mb_type != P_8x8ref0 &&
+				sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
+				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L1) {
+				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l0_active_minus1 : 2 * num_ref_idx_l0_active_minus1 + 1;
+				ref_idx_l0.push_back(te(x));
+			}
+		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
+			if ((num_ref_idx_l1_active_minus1 > 0 ||
+				mb_field_decoding_flag != field_pic_flag) &&
+				sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
+				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L0) {
+				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l1_active_minus1 : 2 * num_ref_idx_l1_active_minus1 + 1;
+				ref_idx_l1.push_back(te(x));
+			}
+		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++) {
+			mvd_l0.push_back(vector<vector<int32_t>>());
+			if (sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
+				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L1) {
+				for (size_t subMbPartIdx = 0;
+					subMbPartIdx < NumSubMbPart(sub_mb_type[mbPartIdx]);
+					subMbPartIdx++) {
+					mvd_l0[mbPartIdx].push_back(vector<int32_t>());
+					for (size_t compIdx = 0; compIdx < 2; compIdx++)
+						mvd_l0[mbPartIdx][subMbPartIdx].push_back(se());
+				}
+			}
+		}
+		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++) {
+			mvd_l1.push_back(vector<vector<int32_t>>());
+			if (sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
+				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L0) {
+				for (size_t subMbPartIdx = 0;
+					subMbPartIdx < NumSubMbPart(sub_mb_type[mbPartIdx]);
+					subMbPartIdx++) {
+					mvd_l1[mbPartIdx].push_back(vector<int32_t>());
+					for (size_t compIdx = 0; compIdx < 2; compIdx++)
+						mvd_l1[mbPartIdx][subMbPartIdx].push_back(se());
+				}
+			}
+		}
+	}
+	int* i16x16DClevel = new int[16];
+	int(*i16x16AClevel)[16] = new int[16][16];
+	int(*level4x4)[16] = new int[16][16];
+	int(*level8x8)[64] = new int[16][64];
+
+	int* Intra16x16DCLevel = new int[16];
+	int(*Intra16x16ACLevel)[16] = new int[16][16];
+	int(*LumaLevel4x4)[16] = new int[16][16];
+	int(*LumaLevel8x8)[64] = new int[16][64];
+
+	int* CbIntra16x16DCLevel = new int[16];
+	int(*CbIntra16x16ACLevel)[16] = new int[16][16];
+	int(*CbLevel4x4)[16] = new int[16][16];
+	int(*CbLevel8x8)[64] = new int[16][64];
+
+	int* CrIntra16x16DCLevel = new int[16];
+	int(*CrIntra16x16ACLevel)[16] = new int[16][16];
+	int(*CrLevel4x4)[16] = new int[16][16];
+	int(*CrLevel8x8)[64] = new int[16][64];
+
+	enum channelType{ Y, Cb, Cr };
+	// 7.3.5.3 Residual data syntax
+	void residual(size_t startIdx, size_t endIdx) {
+		//if (!entropy_coding_mode_flag)
+		//	residual_block = residual_block_cavlc;
+		//else
+		//	residual_block = residual_block_cabac;
+		residual_luma(i16x16DClevel, i16x16AClevel, level4x4, level8x8, startIdx, endIdx);
+		Intra16x16DCLevel = i16x16DClevel;
+		Intra16x16ACLevel = i16x16AClevel;
+		LumaLevel4x4 = level4x4;
+		LumaLevel8x8 = level8x8;
+		if (ChromaArrayType == 1 || ChromaArrayType == 2) {
+			size_t NumC8x8 = 4 / (SubWidthC * SubHeightC);
+			int ChromaDCLevel[2][32] = { 0 };
+			int ChromaACLevel[2][4][4] = { 0 };
+			for (size_t iCbCr = 0; iCbCr < 2; iCbCr++)
+				if ((CodedBlockPatternChroma & 3) && startIdx == 0) {
+					/* chroma DC residual present */
+					CAVLCParsingInvoke(InvokeChromaDCLevel,0);
+					residual_block(ChromaDCLevel[iCbCr], 0, 4 * NumC8x8 - 1,
+						4 * NumC8x8);
+				}
+				else
+					for (size_t i = 0; i < 4 * NumC8x8; i++)
+						ChromaDCLevel[iCbCr][i] = 0;
+			for (size_t iCbCr = 0; iCbCr < 2; iCbCr++)
+				for (size_t i8x8 = 0; i8x8 < NumC8x8; i8x8++)
+					for (size_t i4x4 = 0; i4x4 < 4; i4x4++)
+						if (CodedBlockPatternChroma & 2) {
+							/* chroma AC residual present */
+							CAVLCParsingInvoke(InvokeChromaACLevel, i8x8 * 4 + i4x4);
+							residual_block(ChromaACLevel[iCbCr][i8x8 * 4 + i4x4],
+								max((size_t)0, startIdx - 1), endIdx - 1, 15);
+						}
+						else
+							for (size_t i = 0; i < 15; i++)
+								ChromaACLevel[iCbCr][i8x8 * 4 + i4x4][i] = 0;
+		}
+		else if (ChromaArrayType == 3) {
+			residual_luma(i16x16DClevel, i16x16AClevel, level4x4, level8x8,
+				startIdx, endIdx);
+			CbIntra16x16DCLevel = i16x16DClevel;
+			CbIntra16x16ACLevel = i16x16AClevel;
+			CbLevel4x4 = level4x4;
+			CbLevel8x8 = level8x8;
+			residual_luma(i16x16DClevel, i16x16AClevel, level4x4, level8x8,
+				startIdx, endIdx);
+			CrIntra16x16DCLevel = i16x16DClevel;
+			CrIntra16x16ACLevel = i16x16AClevel;
+			CrLevel4x4 = level4x4;
+			CrLevel8x8 = level8x8;
+		}
+	}
+	// 7.3.5.3.1 Residual luma syntax
+	void residual_luma(int* i16x16DClevel, int(*i16x16AClevel)[16], int(*level4x4)[16], int(*level8x8)[64], size_t startIdx, size_t endIdx) {
+		if (startIdx == 0 && MbPartPredMode(mb_type, 0) == Intra_16x16) {
+			CAVLCParsingInvoke(Invoke16x16DCLevel, 0);
+			residual_block(i16x16DClevel, 0, 15, 16);
+		}
+		for (size_t i8x8 = 0; i8x8 < 4; i8x8++)
+			if (!transform_size_8x8_flag || !entropy_coding_mode_flag)
+				for (size_t i4x4 = 0; i4x4 < 4; i4x4++) {
+					if (CodedBlockPatternLuma & (1 << i8x8))
+						if (MbPartPredMode(mb_type, 0) == Intra_16x16) {
+							CAVLCParsingInvoke(Invoke16x16ACLevel, i8x8 * 4 + i4x4);
+							residual_block(i16x16AClevel[i8x8 * 4 + i4x4],
+								max(0, (int)startIdx - 1), endIdx - 1, 15);
+						}
+						else {
+							CAVLCParsingInvoke(InvokeLevel4x4, i8x8 * 4 + i4x4);
+							residual_block(level4x4[i8x8 * 4 + i4x4],
+								startIdx, endIdx, 16);
+						}
+					else if (MbPartPredMode(mb_type, 0) == Intra_16x16)
+						for (size_t i = 0; i < 15; i++)
+							i16x16AClevel[i8x8 * 4 + i4x4][i] = 0;
+					else
+						for (size_t i = 0; i < 16; i++)
+							level4x4[i8x8 * 4 + i4x4][i] = 0;
+					if (!entropy_coding_mode_flag && transform_size_8x8_flag)
+						for (size_t i = 0; i < 16; i++)
+							level8x8[i8x8][4 * i + i4x4] = level4x4[i8x8 * 4 + i4x4][i];
+				}
+			else if (CodedBlockPatternLuma & (1 << i8x8))
+				residual_block(level8x8[i8x8], 4 * startIdx, 4 * endIdx + 3, 64);
+			else
+				for (size_t i = 0; i < 64; i++)
+					level8x8[i8x8][i] = 0;
+	}
+	void residual_block(int* coeffLevel, size_t  startIdx, size_t  endIdx, size_t maxNumCoeff) {
+		if (!entropy_coding_mode_flag)
+			return residual_block_cavlc(coeffLevel, startIdx, endIdx, maxNumCoeff);
+		else
+			return residual_block_cabac(coeffLevel, startIdx, endIdx, maxNumCoeff);
+	}
+	// 7.3.5.3.2 Residual block CAVLC syntax
+	void residual_block_cavlc(int* coeffLevel, size_t  startIdx, size_t  endIdx, size_t maxNumCoeff) {
+		for (size_t i = 0; i < maxNumCoeff; i++)
+			coeffLevel[i] = 0;
+		string coeff_token = ce();
+		uint32_t suffixLength = 0;
+		int levelVal[16] = { 0 };
+		if (TotalCoeff(coeff_token) > 0) {
+			if (TotalCoeff(coeff_token) > 10 && TrailingOnes(coeff_token) < 3)
+				suffixLength = 1;
+			else
+				suffixLength = 0;
+			for (size_t i = 0; i < TotalCoeff(coeff_token); i++)
+				if (i < TrailingOnes(coeff_token)) {
+					bool trailing_ones_sign_flag = read_bits(1);
+					levelVal[i] = 1 - 2 * trailing_ones_sign_flag;
+				}
+				else {
+					uint32_t level_prefix = parseLevel_prefix();
+					int levelCode = (min(15, (int)level_prefix) << suffixLength);
+					if (suffixLength > 0 || level_prefix >= 14) {
+						int levelSuffixSize = (level_prefix == 14 && suffixLength == 0) ? 4 : (level_prefix >= 15) ? level_prefix - 3 : suffixLength;
+						uint32_t level_suffix = read_bits(levelSuffixSize);
+						levelCode += level_suffix;
+					}
+					if (level_prefix >= 15 && suffixLength == 0)
+						levelCode += 15;
+					if (level_prefix >= 16)
+						levelCode += (1 << (level_prefix - 3)) - 4096;
+					if (i == TrailingOnes(coeff_token) &&
+						TrailingOnes(coeff_token) < 3)
+						levelCode += 2;
+					if (levelCode % 2 == 0)
+						levelVal[i] = (levelCode + 2) >> 1;
+					else
+						levelVal[i] = (-levelCode - 1) >> 1;
+					if (suffixLength == 0)
+						suffixLength = 1;
+					if (abs(levelVal[i]) > (3 << (suffixLength - 1)) &&
+						suffixLength < 6)
+						suffixLength++;
+				}
+			int zerosLeft = 0;
+			int total_zeros = 0;
+			if (TotalCoeff(coeff_token) < endIdx - startIdx + 1) {
+				total_zeros = bitset<16>(ce()).to_ulong();
+				zerosLeft = total_zeros;
+			}
+			else
+				zerosLeft = 0;
+			int run_before = 0;
+			int runVal[16] = { 0 };
+			for (size_t i = 0; i < TotalCoeff(coeff_token) - 1; i++) {
+				if (zerosLeft > 0) {
+					run_before = bitset<16>(ce()).to_ulong();
+					runVal[i] = run_before;
+				}
+				else
+					runVal[i] = 0;
+				zerosLeft = zerosLeft - runVal[i];
+			}
+			runVal[TotalCoeff(coeff_token) - 1] = zerosLeft;
+			int coeffNum = -1;
+			for (size_t i = TotalCoeff(coeff_token) - 1; i >= 0; i--) {
+				coeffNum += runVal[i] + 1;
+				coeffLevel[startIdx + coeffNum] = levelVal[i];
+			}
+		}
+	}
+	void residual_block_cabac(int* coeffLevel, size_t  startIdx, size_t  endIdx, size_t maxNumCoeff) {
+	}
+	string Table95[63][8] = {
+	{"0","0","1","11","1111","000011","01","1"},
+	{"0","1","000101","001011","001111","000000","000111","0001111"},
+	{"1","1","01","10","1110","000001","1","01"},
+	{"0","2","00000111","000111","001011","000100","000100","0001110"},
+	{"1","2","000100","00111","01111","000101","000110","0001101"},
+	{"2","2","001","011","1101","000110","001","001"},
+	{"0","3","000000111","0000111","001000","001000","000011","000000111"},
+	{"1","3","00000110","001010","01100","001001","0000011","0001100"},
+	{"2","3","0000101","001001","01110","001010","0000010","0001011"},
+	{"3","3","00011","0101","1100","001011","000101","00001"},
+	{"0","4","0000000111","00000111","0001111","001100","000010","000000110"},
+	{"1","4","000000110","000110","01010","001101","00000011","000000101"},
+	{"2","4","00000101","000101","01011","001110","00000010","0001010"},
+	{"3","4","000011","0100","1011","001111","0000000","000001"},
+	{"0","5","00000000111","00000100","0001011","010000","-","0000000111"},
+	{"1","5","0000000110","0000110","01000","010001","-","0000000110"},
+	{"2","5","000000101","0000101","01001","010010","-","000000100"},
+	{"3","5","0000100","00110","1010","010011","-","0001001"},
+	{"0","6","0000000001111","000000111","0001001","010100","-","00000000111"},
+	{"1","6","00000000110","00000110","001110","010101","-","00000000110"},
+	{"2","6","0000000101","00000101","001101","010110","-","0000000101"},
+	{"3","6","00000100","001000","1001","010111","-","0001000"},
+	{"0","7","0000000001011","00000001111","0001000","011000","-","000000000111"},
+	{"1","7","0000000001110","000000110","001010","011001","-","000000000110"},
+	{"2","7","00000000101","000000101","001001","011010","-","00000000101"},
+	{"3","7","000000100","000100","1000","011011","-","0000000100"},
+	{"0","8","0000000001000","00000001011","00001111","011100","-","0000000000111"},
+	{"1","8","0000000001010","00000001110","0001110","011101","-","000000000101"},
+	{"2","8","0000000001101","00000001101","0001101","011110","-","000000000100"},
+	{"3","8","0000000100","0000100","01101","011111","-","00000000100"},
+	{"0","9","00000000001111","000000001111","00001011","100000","-","-"},
+	{"1","9","00000000001110","00000001010","00001110","100001","-","-"},
+	{"2","9","0000000001001","00000001001","0001010","100010","-","-"},
+	{"3","9","00000000100","000000100","001100","100011","-","-"},
+	{"0","10","00000000001011","000000001011","000001111","100100","-","-"},
+	{"1","10","00000000001010","000000001110","00001010","100101","-","-"},
+	{"2","10","00000000001101","000000001101","00001101","100110","-","-"},
+	{"3","10","0000000001100","00000001100","0001100","100111","-","-"},
+	{"0","11","000000000001111","000000001000","000001011","101000","-","-"},
+	{"1","11","000000000001110","000000001010","000001110","101001","-","-"},
+	{"2","11","00000000001001","000000001001","00001001","101010","-","-"},
+	{"3","11","00000000001100","00000001000","00001100","101011","-","-"},
+	{"0","12","000000000001011","0000000001111","000001000","101100","-","-"},
+	{"1","12","000000000001010","0000000001110","000001010","101101","-","-"},
+	{"2","12","000000000001101","0000000001101","000001101","101110","-","-"},
+	{"3","12","00000000001000","000000001100","00001000","101111","-","-"},
+	{"0","13","0000000000001111","0000000001011","0000001101","110000","-","-"},
+	{"1","13","000000000000001","0000000001010","000000111","110001","-","-"},
+	{"2","13","000000000001001","0000000001001","000001001","110010","-","-"},
+	{"3","13","000000000001100","0000000001100","000001100","110011","-","-"},
+	{"0","14","0000000000001011","0000000000111","0000001001","110100","-","-"},
+	{"1","14","0000000000001110","00000000001011","0000001100","110101","-","-"},
+	{"2","14","0000000000001101","0000000000110","0000001011","110110","-","-"},
+	{"3","14","000000000001000","0000000001000","0000001010","110111","-","-"},
+	{"0","15","0000000000000111","00000000001001","0000000101","111000","-","-"},
+	{"1","15","0000000000001010","00000000001000","0000001000","111001","-","-"},
+	{"2","15","0000000000001001","00000000001010","0000000111","111010","-","-"},
+	{"3","15","0000000000001100","0000000000001","0000000110","111011","-","-"},
+	{"0","16","0000000000000100","00000000000111","0000000001","111100","-","-"},
+	{"1","16","0000000000000110","00000000000110","0000000100","111101","-","-"},
+	{"2","16","0000000000000101","00000000000101","0000000011","111110","-","-"},
+	{"3","16","0000000000001000","00000000000100","0000000010","111111","-","-"},
+	};
+	// 9.2 CAVLC parsing process for transform coefficient levels
+	enum CAVLCInvokeType {
+		InvokeChromaDCLevel,
+		InvokeChromaACLevel,
+		Invoke16x16DCLevel,
+		Invoke16x16ACLevel,
+		InvokeLevel4x4,
+	};
+		int nC = 0;
+		void CAVLCParsingInvoke(CAVLCInvokeType invokeType,int index) {
+		int xA = -1, yA = 0;
+		int xB = 0, yB = -1;
+		bool availableFlagA, availableFlagB;
+		int mbAddrA =-1, mbAddrB=-1;
+		int xN, yN;
+		int xW, yW;
+		int x, y;
+		int maxW, maxH;
+		int nA=0, nB=0;
+		switch (invokeType)
+		{
+		case H264Decoder::InvokeChromaDCLevel:
+			if (ChromaArrayType == 1) nC = -1;
+			else if (ChromaArrayType == 2) nC = -2;
+			break;
+		case H264Decoder::Invoke16x16DCLevel:
+		case H264Decoder::Invoke16x16ACLevel:
+		case H264Decoder::InvokeLevel4x4:
+			x = InverseRasterScan(index / 4, 8, 8, 16, 0) +
+				InverseRasterScan(index % 4, 4, 4, 8, 0);
+			y = InverseRasterScan(index / 4, 8, 8, 16, 1) +
+				InverseRasterScan(index % 4, 4, 4, 8, 1);
+			mbAddrA = procNeighbouring(true, x+xA, y+yA, xW, yW);
+			mbAddrB = procNeighbouring(true, x+xB, y+yB, xW, yW);
+			break;
+		case H264Decoder::InvokeChromaACLevel:
+			x = InverseRasterScan(index, 4, 4, 8, 0); // 6-21
+			y = InverseRasterScan(index, 4, 4, 8, 1); // 6-22
+			mbAddrA = procNeighbouring(true, x + xA, y + yA, xW, yW);
+			mbAddrB = procNeighbouring(true, x + xB, y + yB, xW, yW);
+			break;
+		default:
+			break;
+		}
+
+		//5
+		availableFlagA = isMBAvalable(mbAddrA);
+		availableFlagB = isMBAvalable(mbAddrB);
+		// 6
+		if (availableFlagA) {
+			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrA] == P_Skip) {
+				nA = 0;
+			}
+			else if ( sliceTypeCheck(I)) { 
+				nA= (mb_typesInCurrentSlice[mbAddrA] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrA];
+			}		
+		}
+		if (availableFlagB) {
+			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrB] == P_Skip) {
+				nB = 0;
+			}
+			else if (sliceTypeCheck(I)) {
+				nB = (mb_typesInCurrentSlice[mbAddrB] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrB];
+			}
+		}
+		// 7 
+		if (availableFlagA == 1 && availableFlagB == 1) {
+			nC = (nA + nB + 1) >> 1;
+		}
+		else if (availableFlagA == 1) {
+			nC = nA;
+		}
+		else if (availableFlagB == 1) {
+			nC = nB;
+		}
+		else {
+			nC = 0;
+		}
+	}
+	// 6.4.8 Derivation process of the availability for macroblock addresses
+	bool isMBAvalable(int mbAddr) {
+		if (mbAddr < 0) return false;
+		if (mbAddr > CurrMbAddr) return false;
+		return true;
+	}
+
+	// 6.4.12 Derivation process for neighbouring locations
+	int procNeighbouring(bool isLuma , int xN, int yN, int& xW, int& yW) {
+		int maxW, maxH;
+		if (isLuma) {
+			maxW = maxH = 16; // 6-31
+		}
+		else {
+			maxW = MbWidthC;  // 6-32
+			maxH = MbHeightC; // 6-33
+		}
+		if (MbaffFrameFlag == 0) {
+			// 6.4.9 Derivation process for neighbouring macroblock addresses and their availability
+			int mbAddrA = CurrMbAddr - 1;
+			int mbAddrB = CurrMbAddr - PicWidthInMbs;
+			int mbAddrC = CurrMbAddr - PicWidthInMbs + 1;
+			int mbAddrD = CurrMbAddr - PicWidthInMbs - 1;
+			xW = (xN + maxW) % maxW; // 6-34
+			yW = (yN + maxH) % maxH; // 6-35
+			if (yN > maxH - 1) return -1;
+			else if (xN < 0) {
+				return yN < 0 ? mbAddrD : mbAddrA;
+			}
+			else if (xN < maxW) {
+				return yN < 0 ? mbAddrB : CurrMbAddr;
+			}
+			else {
+				return yN < 0 ? mbAddrC : -1;
+			}
+		}
+		else {
+		}
+	}
+	string ce() {
+
+		return "0";
+	}
+	// 9.2.2.1 Parsing process for level_prefix
+	uint32_t parseLevel_prefix() {
+		// 9-4
+		int leadingZeroBits = -1;
+		for (bool b = 0; !b; leadingZeroBits++)
+			b = read_bits(1);
+		return leadingZeroBits;
+
+	}
+	uint32_t TrailingOnes(string coeff_token) {
+		return 0;
+	}
+	uint32_t TotalCoeff(string coeff_token) {
+		return 0;
+	}
+	// 9.2.1 Parsing process for total number of non-zero transform coefficient levels and number of trailing ones
+
 	// Table 7-11 – Macroblock types for I slice
 	// NumMbPart(mb_type)|MbPartPredMode(mb_type, 0)|MbPartPredMode	(mb_type, 1)|MbPartWidth(mb_type)|MbPartHeight(mb_type)
-// Table 7-13 – Macroblock type values 0 to 4 for P and SP slices
+	// Table 7-13 – Macroblock type values 0 to 4 for P and SP slices
 	uint32_t TableP[6][5] = {
 	{1,Pred_L0,na,16,16}	,
 	{2,Pred_L0,Pred_L0,16,8},
@@ -1173,7 +1735,6 @@ private:
 		return na;
 	}
 
-
 	uint32_t NumMbPart(int mb_type) {
 		if (sliceTypeCheck(P) || sliceTypeCheck(SP)) {
 			return TableP[mb_type][0];
@@ -1183,7 +1744,22 @@ private:
 		}
 		return na;
 	}
+	//Table 7-17 – Sub-macroblock types in P macroblocks
+	uint32_t subTableP[4][4] = {
+	{1, Pred_L0, 8, 8},
+	{2,Pred_L0,8,4 },
+	{2,Pred_L0,4,8 },
+	{4,Pred_L0,4,4 },
+	};
 
+	uint32_t SubMbPredMode(uint32_t sub_mb_type) {
+		if (sliceTypeCheck(P)) { return subTableP[sub_mb_type][1]; }
+		else return na;
+	}
+	uint32_t NumSubMbPart(uint32_t sub_mb_type) {
+		if (sliceTypeCheck(P)) { return subTableP[sub_mb_type][0]; }
+		else return na;
+	}
 
 #pragma endregion
 #pragma region 7.4.2 Raw byte sequence payloads and RBSP trailing bits semantics
@@ -1203,9 +1779,11 @@ private:
 		return  i;
 	}
 	// 8.2.2.1 Specification for interleaved slice group map type
-	vector<uint32_t> mapUnitToSliceGroupMap;
+	vector<uint32_t> mapUnitToSliceGroupMap = vector<uint32_t>();
 	void calcMapUnitToSliceGroupMap() {
 		mapUnitToSliceGroupMap = vector<uint32_t>(PicSizeInMapUnits, 0);
+		if (num_slice_groups_minus1 == 0) return;
+		cout << "MTP" << slice_group_map_type << endl;
 		size_t i, j, k, x, y, iGroup;
 		size_t sizeOfUpperLeftGroup =
 			(slice_group_change_direction_flag ? (PicSizeInMapUnits - MapUnitsInSliceGroup0) : MapUnitsInSliceGroup0); // 8-14
@@ -1216,8 +1794,7 @@ private:
 		case 0: // (8-17)
 			i = 0;
 			do
-				for (iGroup = 0; iGroup <= num_slice_groups_minus1 && i < PicSizeInMapUnits;
-					i += run_length_minus1[iGroup++] + 1)
+				for (iGroup = 0; iGroup <= num_slice_groups_minus1 && i < PicSizeInMapUnits; i += run_length_minus1[iGroup++] + 1)
 					for (j = 0; j <= run_length_minus1[iGroup] && i + j < PicSizeInMapUnits; j++)
 						mapUnitToSliceGroupMap[i + j] = iGroup;
 			while (i < PicSizeInMapUnits);
@@ -1302,6 +1879,182 @@ private:
 		default:
 			break;
 		}
+	}
+#pragma endregion
+#pragma region CABAC
+
+	// 9.3 CABAC parsing process for slice data
+	int32_t ae() {
+		//// TODO
+		//bool firstSE = false;
+		//if (firstSE) {
+		//	initContextVariables();
+		//	initDecodingEngine();
+		//}
+		//do {
+		//	DecodeBin(ctxIdx);
+		//} while ()
+		return 0;
+	}
+	void CABACParsing() {
+	}
+	int pStateIdx = 0;
+	bool valMPS = 0;
+	void initContextVariables() {
+		int m = 0, n = 11;
+		int preCtxState = Clip3(1, 126, ((m * Clip3(0, 51, SliceQPY)) >> 4) + n);
+		if (preCtxState <= 63) {
+			pStateIdx = 63 - preCtxState;
+			valMPS = 0;
+		}
+		else {
+			pStateIdx = preCtxState - 64;
+			valMPS = 1;
+		}
+	}
+
+	int codIOffset = 0;
+	int codIRange = 0;
+	//9.3.1.2 Initialization process for the arithmetic decoding engine
+	void initDecodingEngine() {
+		codIOffset = read_bits(9);
+		codIRange = 510;
+	}
+	// Figure 9-2
+	bool DecodeBin(uint32_t ctxIdx) {
+		bool bypassFlag = 1;
+		if (bypassFlag == 1) return DecodeBypass();
+		if (ctxIdx == 276) return DecodeTerminate();
+		DecodeDecision(ctxIdx);
+	}
+	//Table 9 - 44 – Specification of rangeTabLPS depending on pStateIdx and qCodIRangeIdx
+	uint32_t rangeTabLPS[64][4] = {
+	{128, 176, 208, 240},
+	{ 128,167,197,227 },
+	{ 128,158,187,216 },
+	{ 123,150,178,205 },
+	{ 116,142,169,195 },
+	{ 111,135,160,185 },
+	{ 105,128,152,175 },
+	{ 100,122,144,166 },
+	{ 95,116,137,158 },
+	{ 90,110,130,150 },
+	{ 85,104,123,142 },
+	{ 81,99,117,135 },
+	{ 77,94,111,128 },
+	{ 73,89,105,122 },
+	{ 69,85,100,116 },
+	{ 66,80,95,110 },
+	{ 62,76,90,104 },
+	{ 59,72,86,99 },
+	{ 56,69,81,94 },
+	{ 53,65,77,89 },
+	{ 51,62,73,85 },
+	{ 48,59,69,80 },
+	{ 46,56,66,76 },
+	{ 43,53,63,72 },
+	{ 41,50,59,69 },
+	{ 39,48,56,65 },
+	{ 37,45,54,62 },
+	{ 35,43,51,59 },
+	{ 33,41,48,56 },
+	{ 32,39,46,53 },
+	{ 30,37,43,50 },
+	{ 29,35,41,48 },
+	{ 27,33,39,45 },
+	{ 26,31,37,43 },
+	{ 24,30,35,41 },
+	{ 23,28,33,39 },
+	{ 22,27,32,37 },
+	{ 21,26,30,35 },
+	{ 20,24,29,33 },
+	{ 19,23,27,31 },
+	{ 18,22,26,30 },
+	{ 17,21,25,28 },
+	{ 16,20,23,27 },
+	{ 15,19,22,25 },
+	{ 14,18,21,24 },
+	{ 14,17,20,23 },
+	{ 13,16,19,22 },
+	{ 12,15,18,21 },
+	{ 12,14,17,20 },
+	{ 11,14,16,19 },
+	{ 11,13,15,18 },
+	{ 10,12,15,17 },
+	{ 10,12,14,16 },
+	{ 9,11,13,15 },
+	{ 9,11,12,14 },
+	{ 8,10,12,14 },
+	{ 8,9,11,13 },
+	{ 7,9,11,12 },
+	{ 7,9,10,12 },
+	{ 7,8,10,11 },
+	{ 6,8,9,11 },
+	{ 6,7,9,10 },
+	{ 6,7,8,9 },
+	{ 2,2,2,2 }, };
+	// Table 9-45 – State transition table
+	uint32_t transIdxLPS[64] = { 0,0,1,2,2,4,4,5,6,7,8,9,9,11,11,12,13,13,15,15,16,16,18,18,19,19,21,21,22,22,23,24,24,25,26,26,27,27,28,29,29,30,30,30,31,32,32,33,33,33,34,34,35,35,35,36,36,36,37,37,37,38,38,63, };
+	uint32_t transIdxMPS[64] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 62, 63, };
+	// Figure 9-3 – Flowchart for decoding a decision
+	bool DecodeDecision(uint32_t ctxIdx) {
+		bool binVal = 0;
+		uint32_t qCodIRangeIdx = (codIRange >> 6) & 3;
+		uint32_t codIRangeLPS = rangeTabLPS[pStateIdx][qCodIRangeIdx];
+		codIRange = codIRange - codIRangeLPS;
+
+		if (codIOffset >= codIRange) {
+			binVal = !valMPS;
+			codIOffset = codIOffset - codIRange;
+			codIRange = codIRangeLPS;
+			if (pStateIdx == 0) {
+				valMPS = 1 - valMPS;
+			}
+			pStateIdx = transIdxLPS[pStateIdx];
+		}
+		else {
+			binVal = valMPS;
+			pStateIdx = transIdxMPS[pStateIdx];
+		}
+		RenormD();
+		return binVal;
+	}
+	// Figure 9-4 – Flowchart of renormalization
+	void RenormD() {
+		while (codIRange < 256) {
+			codIRange = codIRange << 1;
+			codIOffset = codIOffset << 1;
+			codIOffset = codIOffset | read_bits(1);
+		}
+	}
+	// Figure 9-5 – Flowchart of bypass decoding process
+	// 9.3.3.2.3 Bypass decoding process for binary decisions
+	bool DecodeBypass() {
+		bool binVal = 0;
+		codIOffset = codIOffset << 1;
+		codIOffset = codIOffset | read_bits(1);
+		if (codIOffset >= codIRange) {
+			binVal = 1;
+			codIOffset = codIOffset - codIRange;
+		}
+		else {
+			binVal = 0;
+		}
+		return binVal;
+	}
+	// Figure 9-6 – Flowchart of decoding a decision before termination
+	// 9.3.3.2.4 Decoding process for binary decisions before termination
+	bool DecodeTerminate() {
+		bool binVal = 0;
+		codIRange = codIRange - 2;
+		if (codIOffset >= codIRange) {
+			binVal = 1;
+		}
+		else {
+			binVal = 0;
+			RenormD();
+		}
+		return binVal;
 	}
 #pragma endregion
 
@@ -1509,7 +2262,7 @@ private:
 
 int main(int argc, char* argv[]) {
 
-	H264Decoder video("video/output.h264");
+	H264Decoder video("video/outputBase.h264");
 
 	return 0;
 }
