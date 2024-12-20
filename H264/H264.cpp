@@ -9,40 +9,40 @@
 #include <iomanip>
 //#define DEBUG
 using namespace std;
-#define ChromaArrayType (separate_colour_plane_flag == 0) ? chroma_format_idc : 0
-#define SliceGroupChangeRate slice_group_change_rate_minus1 + 1
-#define SubWidthC (chroma_format_idc == 1||chroma_format_idc == 2) ? 2: (chroma_format_idc == 3? 1 : 0 )
-#define SubHeightC ((chroma_format_idc == 2||chroma_format_idc == 3)&& separate_colour_plane_flag == 0) ? 1: (chroma_format_idc == 1? 2 : 0 )
-#define Clip3( x, y, z ) (z<x) ? x : (z>y) ? y : z // 5-8
-#define InverseRasterScan( a, b, c, d, e ) (e==0)?(a%(d/b))*b:(a/(d/b))*c // 5-11
-#define MbWidthC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubWidthC) // 6-1
-#define MbHeightC (chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubHeightC) // 6-2
-#define BitDepthY 8 + bit_depth_luma_minus8  // 7-3
-#define QpBdOffsetY 6 * bit_depth_luma_minus8 // 7-4
-#define BitDepthC  8 + bit_depth_chroma_minus8 // 7-5
-#define QpBdOffsetC 6 * bit_depth_chroma_minus8 // 7-6
-#define RawMbBits  256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC // 7-7
-#define PicWidthInMbs pic_width_in_mbs_minus1 + 1 // 7-13
-#define PicWidthInSamplesL PicWidthInMbs * 16 // 7-14
-#define PicWidthInSamplesC PicWidthInMbs * MbWidthC  // 7-15
-#define PicHeightInMapUnits pic_height_in_map_units_minus1 + 1 // 7-16
-#define PicSizeInMapUnits  PicWidthInMbs * PicHeightInMapUnits // 7-17
-#define FrameHeightInMbs ( 2 - frame_mbs_only_flag ) * PicHeightInMapUnits  // 7-18
+#define ChromaArrayType ((separate_colour_plane_flag == 0) ? chroma_format_idc : 0)
+#define SliceGroupChangeRate (slice_group_change_rate_minus1 + 1)
+#define SubWidthC ((chroma_format_idc == 1||chroma_format_idc == 2) ? 2: (chroma_format_idc == 3? 1 : 0 ))
+#define SubHeightC (((chroma_format_idc == 2||chroma_format_idc == 3)&& separate_colour_plane_flag == 0) ? 1: (chroma_format_idc == 1? 2 : 0 ))
+#define Clip3( x, y, z ) ((z<x) ? x : (z>y) ? y : z) // 5-8
+#define InverseRasterScan( a, b, c, d, e ) ((e==0)?(a%(d/b))*b:(a/(d/b))*c) // 5-11
+#define MbWidthC ((chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubWidthC)) // 6-1
+#define MbHeightC ((chroma_format_idc == 0 || separate_colour_plane_flag == 1) ? 0 : (16 / SubHeightC)) // 6-2
+#define BitDepthY (8 + bit_depth_luma_minus8)  // 7-3
+#define QpBdOffsetY (6 * bit_depth_luma_minus8) // 7-4
+#define BitDepthC  (8 + bit_depth_chroma_minus8) // 7-5
+#define QpBdOffsetC (6 * bit_depth_chroma_minus8) // 7-6
+#define RawMbBits  (256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC) // 7-7
+#define PicWidthInMbs (pic_width_in_mbs_minus1 + 1) // 7-13
+#define PicWidthInSamplesL (PicWidthInMbs * 16) // 7-14
+#define PicWidthInSamplesC (PicWidthInMbs * MbWidthC)  // 7-15
+#define PicHeightInMapUnits (pic_height_in_map_units_minus1 + 1) // 7-16
+#define PicSizeInMapUnits  (PicWidthInMbs * PicHeightInMapUnits) // 7-17
+#define FrameHeightInMbs (( 2 - frame_mbs_only_flag ) * PicHeightInMapUnits)  // 7-18
 #define IdrPicFlag  ( ( nal_unit_type == 5 ) ? 1 : 0 )
 #define MbaffFrameFlag ( mb_adaptive_frame_field_flag && !field_pic_flag ) 
-#define PicHeightInMbs  FrameHeightInMbs / ( 1 + field_pic_flag ) 
-#define PicHeightInSamplesL  PicHeightInMbs * 16
-#define PicHeightInSamplesC  PicHeightInMbs * MbHeightC 
-#define PicSizeInMbs  PicWidthInMbs * PicHeightInMbs
-#define SliceQPY  26 + pic_init_qp_minus26 + slice_qp_delta // 7-32
+#define PicHeightInMbs  (FrameHeightInMbs / ( 1 + field_pic_flag ) )
+#define PicHeightInSamplesL ( PicHeightInMbs * 16 )
+#define PicHeightInSamplesC ( PicHeightInMbs * MbHeightC )
+#define PicSizeInMbs ( PicWidthInMbs * PicHeightInMbs )
+#define SliceQPY ( 26 + pic_init_qp_minus26 + slice_qp_delta ) // 7-32
 #define MapUnitsInSliceGroup0 min( slice_group_change_cycle * SliceGroupChangeRate, PicSizeInMapUnits)// 7-36
-#define CodedBlockPatternLuma coded_block_pattern % 16 // 7-38
-#define CodedBlockPatternChroma coded_block_pattern / 16 // 7-38
+#define CodedBlockPatternLuma ( coded_block_pattern % 16 ) // 7-38
+#define CodedBlockPatternChroma ( coded_block_pattern / 16 )// 7-38
 // 8-24 8-25 8-26
-#define MbToSliceGroupMap(i) (frame_mbs_only_flag == 1 || field_pic_flag == 1)\
-? mapUnitToSliceGroupMap[i] : MbaffFrameFlag == 1 \
-? mapUnitToSliceGroupMap[ i / 2 ] \
-: mapUnitToSliceGroupMap[ ( i / ( 2 * PicWidthInMbs ) ) * PicWidthInMbs + (i % PicWidthInMbs)]
+#define MbToSliceGroupMap(run_before) ((frame_mbs_only_flag == 1 || field_pic_flag == 1)\
+? mapUnitToSliceGroupMap[run_before] : MbaffFrameFlag == 1 \
+? mapUnitToSliceGroupMap[ run_before / 2 ] \
+: mapUnitToSliceGroupMap[ ( run_before / ( 2 * PicWidthInMbs ) ) * PicWidthInMbs + (run_before % PicWidthInMbs)])
 class H264Decoder {
 public:
 	H264Decoder(string fileName) {
@@ -197,7 +197,6 @@ private:
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
-		if (nal_unit_type != 1)
 			cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
 
 		nalUnitHeaderBytes = 1;
@@ -247,7 +246,7 @@ private:
 		switch (nal_unit_type)
 		{
 		case 1:
-			//slice_layer_without_partitioning_rbsp();
+			slice_layer_without_partitioning_rbsp();
 			break;
 		case 5:
 			slice_layer_without_partitioning_rbsp();
@@ -502,7 +501,6 @@ private:
 	bool UseDefaultScalingMatrix8x8Flag[12] = { false };
 	void seq_parameter_set_data() {
 		profile_idc = read_bits(8);//profile_idc 0 u(8)
-		cout << dec << (int)profile_idc << endl;
 		constraint_set0_flag = read_bits(1);//constraint_set0_flag 0 u(1)
 		constraint_set1_flag = read_bits(1);//constraint_set1_flag 0 u(1)
 		constraint_set2_flag = read_bits(1);//constraint_set2_flag 0 u(1)
@@ -540,6 +538,7 @@ private:
 		}
 		log2_max_frame_num_minus4 = ue();//log2_max_frame_num_minus4 0 ue(v)
 		pic_order_cnt_type = ue();//	pic_order_cnt_type 0 ue(v)
+		cout << "pic_order_cnt_type" << pic_order_cnt_type << endl;
 		if (pic_order_cnt_type == 0)
 			log2_max_pic_order_cnt_lsb_minus4 = ue();// log2_max_pic_order_cnt_lsb_minus4 0 ue(v)
 		else if (pic_order_cnt_type == 1) {
@@ -823,9 +822,16 @@ private:
 	void slice_layer_without_partitioning_rbsp() {
 		slice_header();
 		slice_data();// /* all categories of slice_data( ) syntax */ 2 | 3 | 4
-		cout << "AA" << endl;
-		//rbsp_slice_trailing_bits();// 2
+		rbsp_slice_trailing_bits();// 2
 	}
+	// 7.3.2.10 RBSP slice trailing bits syntax
+	void rbsp_slice_trailing_bits() {
+		rbsp_trailing_bits();
+		if (entropy_coding_mode_flag)
+			while (more_rbsp_trailing_data())
+				read_bits(16);
+	}
+
 	// 7.3.2.11 RBSP trailing bits syntax
 	void rbsp_trailing_bits() {
 		read_bits(1);//rbsp_stop_one_bit /* equal to 1 */ All f(1)
@@ -1056,8 +1062,8 @@ private:
 	vector<uint32_t> mb_typesInCurrentSlice;
 	vector<uint32_t> TotalCoeffInCurrentSlice;
 	void slice_data() {
-		mb_typesInCurrentSlice = vector<uint32_t>(PicSizeInMbs, 0);
-		TotalCoeffInCurrentSlice = vector<uint32_t>(PicSizeInMbs, 0);
+		mb_typesInCurrentSlice = vector<uint32_t>(PicSizeInMapUnits, 0);
+		TotalCoeffInCurrentSlice = vector<uint32_t>(PicSizeInMapUnits, 0);
 		if (entropy_coding_mode_flag)
 			while (!byte_aligned())
 				cabac_alignment_one_bit = read_bits(1);
@@ -1098,12 +1104,7 @@ private:
 			}
 			CurrMbAddr = NextMbAddress(CurrMbAddr);
 		} while (moreDataFlag);
-		cout << "AA";
 	}
-
-	struct MacroBlock {
-
-	};
 	// 7.3.5 Macroblock layer syntax
 	uint32_t mb_type = I_NxN;
 	bool pcm_alignment_zero_bit = false;
@@ -1117,6 +1118,7 @@ private:
 		mb_type = ue();// ue(v) | ae(v)
 		mb_typesInCurrentSlice[CurrMbAddr] = mb_type;
 		if (mb_type == I_PCM) {
+
 			while (!byte_aligned())
 				pcm_alignment_zero_bit = read_bits(1);
 			for (size_t i = 0; i < 256; i++)
@@ -1309,7 +1311,7 @@ private:
 	int(*CrLevel4x4)[16] = new int[16][16];
 	int(*CrLevel8x8)[64] = new int[16][64];
 
-	enum channelType{ Y, Cb, Cr };
+	enum channelType { Y, Cb, Cr };
 	// 7.3.5.3 Residual data syntax
 	void residual(size_t startIdx, size_t endIdx) {
 		//if (!entropy_coding_mode_flag)
@@ -1328,7 +1330,7 @@ private:
 			for (size_t iCbCr = 0; iCbCr < 2; iCbCr++)
 				if ((CodedBlockPatternChroma & 3) && startIdx == 0) {
 					/* chroma DC residual present */
-					CAVLCParsingInvoke(InvokeChromaDCLevel,0);
+					CAVLCParsingInvoke(InvokeChromaDCLevel, 0);
 					residual_block(ChromaDCLevel[iCbCr], 0, 4 * NumC8x8 - 1,
 						4 * NumC8x8);
 				}
@@ -1447,19 +1449,21 @@ private:
 						suffixLength < 6)
 						suffixLength++;
 				}
+
 			int zerosLeft = 0;
 			int total_zeros = 0;
 			if (TotalCoeff(coeff_token) < endIdx - startIdx + 1) {
-				total_zeros = bitset<16>(ce()).to_ulong();
+				total_zeros = parseTotal_zeros(maxNumCoeff, TotalCoeff(coeff_token));
 				zerosLeft = total_zeros;
 			}
 			else
 				zerosLeft = 0;
+
 			int run_before = 0;
 			int runVal[16] = { 0 };
 			for (size_t i = 0; i < TotalCoeff(coeff_token) - 1; i++) {
 				if (zerosLeft > 0) {
-					run_before = bitset<16>(ce()).to_ulong();
+					run_before = parseRun_before(zerosLeft);
 					runVal[i] = run_before;
 				}
 				else
@@ -1468,7 +1472,7 @@ private:
 			}
 			runVal[TotalCoeff(coeff_token) - 1] = zerosLeft;
 			int coeffNum = -1;
-			for (size_t i = TotalCoeff(coeff_token) - 1; i >= 0; i--) {
+			for (int i = TotalCoeff(coeff_token) - 1; i >= 0; i--) {
 				coeffNum += runVal[i] + 1;
 				coeffLevel[startIdx + coeffNum] = levelVal[i];
 			}
@@ -1476,6 +1480,7 @@ private:
 	}
 	void residual_block_cabac(int* coeffLevel, size_t  startIdx, size_t  endIdx, size_t maxNumCoeff) {
 	}
+	// Table 9-5 – coeff_token mapping to TotalCoeff( coeff_token ) and TrailingOnes( coeff_token )
 	string Table95[63][8] = {
 	{"0","0","1","11","1111","000011","01","1"},
 	{"0","1","000101","001011","001111","000000","000111","0001111"},
@@ -1548,17 +1553,17 @@ private:
 		Invoke16x16ACLevel,
 		InvokeLevel4x4,
 	};
-		int nC = 0;
-		void CAVLCParsingInvoke(CAVLCInvokeType invokeType,int index) {
+	int nC = 0;
+	void CAVLCParsingInvoke(CAVLCInvokeType invokeType, int index) {
 		int xA = -1, yA = 0;
 		int xB = 0, yB = -1;
 		bool availableFlagA, availableFlagB;
-		int mbAddrA =-1, mbAddrB=-1;
+		int mbAddrA = -1, mbAddrB = -1;
 		int xN, yN;
 		int xW, yW;
 		int x, y;
 		int maxW, maxH;
-		int nA=0, nB=0;
+		int nA = 0, nB = 0;
 		switch (invokeType)
 		{
 		case H264Decoder::InvokeChromaDCLevel:
@@ -1572,8 +1577,8 @@ private:
 				InverseRasterScan(index % 4, 4, 4, 8, 0);
 			y = InverseRasterScan(index / 4, 8, 8, 16, 1) +
 				InverseRasterScan(index % 4, 4, 4, 8, 1);
-			mbAddrA = procNeighbouring(true, x+xA, y+yA, xW, yW);
-			mbAddrB = procNeighbouring(true, x+xB, y+yB, xW, yW);
+			mbAddrA = procNeighbouring(true, x + xA, y + yA, xW, yW);
+			mbAddrB = procNeighbouring(true, x + xB, y + yB, xW, yW);
 			break;
 		case H264Decoder::InvokeChromaACLevel:
 			x = InverseRasterScan(index, 4, 4, 8, 0); // 6-21
@@ -1593,9 +1598,9 @@ private:
 			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrA] == P_Skip) {
 				nA = 0;
 			}
-			else if ( sliceTypeCheck(I)) { 
-				nA= (mb_typesInCurrentSlice[mbAddrA] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrA];
-			}		
+			else if (sliceTypeCheck(I)) {
+				nA = (mb_typesInCurrentSlice[mbAddrA] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrA];
+			}
 		}
 		if (availableFlagB) {
 			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrB] == P_Skip) {
@@ -1627,7 +1632,7 @@ private:
 	}
 
 	// 6.4.12 Derivation process for neighbouring locations
-	int procNeighbouring(bool isLuma , int xN, int yN, int& xW, int& yW) {
+	int procNeighbouring(bool isLuma, int xN, int yN, int& xW, int& yW) {
 		int maxW, maxH;
 		if (isLuma) {
 			maxW = maxH = 16; // 6-31
@@ -1656,10 +1661,29 @@ private:
 			}
 		}
 		else {
+			cout << "?" << endl;
 		}
 	}
+	int getnCIndex() {
+		int nCIndex = -1;
+		if (0 <= nC && nC < 2) nCIndex = 2;
+		else if (2 <= nC && nC < 4) nCIndex = 3;
+		else if (4 <= nC && nC < 8) nCIndex = 4;
+		else if (8 <= nC) nCIndex = 5;
+		else if (nC == -1) nCIndex = 6;
+		else if (nC == -2) nCIndex = 7;
+		return nCIndex;
+	}
 	string ce() {
-
+		int nCIndex = getnCIndex();
+		for (size_t i = 0; i < 63; i++)
+		{
+			string token = Table95[i][nCIndex];
+			int length = token.length();
+			if (next_bits(length) == bitset<16>(token).to_ulong()) {
+				return token;
+			}
+		}
 		return "0";
 	}
 	// 9.2.2.1 Parsing process for level_prefix
@@ -1672,13 +1696,121 @@ private:
 
 	}
 	uint32_t TrailingOnes(string coeff_token) {
+		int nCIndex = getnCIndex();
+		for (size_t i = 0; i < 63; i++)
+		{
+			if (Table95[i][nCIndex].compare(coeff_token) == 0) return stoi(Table95[i][0]);
+		}
 		return 0;
 	}
 	uint32_t TotalCoeff(string coeff_token) {
+		int nCIndex = getnCIndex();
+		for (size_t i = 0; i < 63; i++)
+		{
+			if (Table95[i][nCIndex].compare(coeff_token) == 0) return stoi(Table95[i][1]);
+		}
 		return 0;
 	}
-	// 9.2.1 Parsing process for total number of non-zero transform coefficient levels and number of trailing ones
 
+	string Table99a[4][4] = {
+	{"0","1","1","1"},
+	{"1","01","01","0"},
+	{"2","001","00","-"},
+	{"3","000","-","-"},
+	};
+	string Table99b[8][8] = {
+	{"0","1","000","000","110","00","00","0"},
+	{"1","010","01","001","00","01","01","1"},
+	{"2","011","001","01","01","10","1","-"},
+	{"3","0010","100","10","10","11","-","-"},
+	{"4","0011","101","110","111","-","-","-"},
+	{"5","0001","110","111","-","-","-","-"},
+	{"6","00001","111","-","-","-","-","-"},
+	{"7","00000","-","-","-","-","-","-"},
+	};
+	string Table97[16][16] = {
+	{"0","1","111","0101","00011","0101","000001","000001","000001","000001","00001","0000","0000","000","00","0"},
+	{"1","011","110","111","111","0100","00001","00001","0001","000000","00000","0001","0001","001","01","1"},
+	{"2","010","101","110","0101","0011","111","101","00001","0001","001","001","01","1","1","-"},
+	{"3","0011","100","101","0100","111","110","100","011","11","11","010","1","01","-","-"},
+	{"4","0010","011","0100","110","110","101","011","11","10","10","1","001","-","-","-"},
+	{"5","00011","0101","0011","101","101","100","11","10","001","01","011","-","-","-","-"},
+	{"6","00010","0100","100","100","100","011","010","010","01","0001","-","-","-","-","-"},
+	{"7","000011","0011","011","0011","011","010","0001","001","00001","-","-","-","-","-","-"},
+	{"8","000010","0010","0010","011","0010","0001","001","000000","-","-","-","-","-","-","-"},
+	{"9","0000011","00011","00011","0010","00001","001","000000","-","-","-","-","-","-","-","-"},
+	{"10","0000010","00010","00010","00010","0001","000000","-","-","-","-","-","-","-","-","-"},
+	{"11","00000011","000011","000001","00001","00000","-","-","-","-","-","-","-","-","-","-"},
+	{"12","00000010","000010","00001","00000","-","-","-","-","-","-","-","-","-","-","-"},
+	{"13","000000011","000001","000000","-","-","-","-","-","-","-","-","-","-","-","-"},
+	{"14","000000010","000000","-","-","-","-","-","-","-","-","-","-","-","-","-"},
+	{"15","000000001","-","-","-","-","-","-","-","-","-","-","-","-","-","-"},
+	};
+	uint32_t parseTotal_zeros(int maxNumCoeff, int tzVlcIndex) {
+		if (maxNumCoeff == 4) {
+			for (size_t total_zeros = 0; total_zeros < 4; total_zeros++)
+			{
+				string token = Table99a[total_zeros][tzVlcIndex];
+				int length = token.length();
+				if (next_bits(length) == bitset<16>(token).to_ulong()) {
+					read_bits(length);
+					return total_zeros;
+				}
+			}
+		}
+		else if (maxNumCoeff == 8) {
+			for (size_t total_zeros = 0; total_zeros < 8; total_zeros++)
+			{
+				string token = Table99b[total_zeros][tzVlcIndex];
+				int length = token.length();
+				if (next_bits(length) == bitset<16>(token).to_ulong()) {
+					read_bits(length);
+					return total_zeros;
+				}
+			}
+		}
+		else {
+			for (size_t total_zeros = 0; total_zeros < 16; total_zeros++)
+			{
+				string token = Table97[total_zeros][tzVlcIndex];
+				int length = token.length();
+				if (next_bits(length) == bitset<16>(token).to_ulong()) {
+					read_bits(length);
+					return total_zeros;
+				}
+			}
+		}
+		return 0;
+	}
+	string Table910[15][8] = {
+	{"0","1","1","11","11","11","11","111"},
+	{"1","0","01","10","10","10","000","110"},
+	{"2","-","00","01","01","011","001","101"},
+	{"3","-","-","00","001","010","011","100"},
+	{"4","-","-","-","000","001","010","011"},
+	{"5","-","-","-","-","000","101","010"},
+	{"6","-","-","-","-","-","100","001"},
+	{"7","-","-","-","-","-","-","0001"},
+	{"8","-","-","-","-","-","-","00001"},
+	{"9","-","-","-","-","-","-","000001"},
+	{"10","-","-","-","-","-","-","0000001"},
+	{"11","-","-","-","-","-","-","00000001"},
+	{"12","-","-","-","-","-","-","000000001"},
+	{"13","-","-","-","-","-","-","0000000001"},
+	{"14","-","-","-","-","-","-","00000000001"},
+	};
+	uint32_t parseRun_before(int zerosLeft) {
+		int z = min(7, zerosLeft);
+		for (size_t run_before = 0; run_before < 15; run_before++)
+		{
+			string token = Table910[run_before][z];
+			int length = token.length();
+			if (next_bits(length) == bitset<16>(token).to_ulong()) {
+				read_bits(length);
+				return run_before;
+			}
+		}
+	}
 	// Table 7-11 – Macroblock types for I slice
 	// NumMbPart(mb_type)|MbPartPredMode(mb_type, 0)|MbPartPredMode	(mb_type, 1)|MbPartWidth(mb_type)|MbPartHeight(mb_type)
 	// Table 7-13 – Macroblock type values 0 to 4 for P and SP slices
@@ -1784,7 +1916,7 @@ private:
 		mapUnitToSliceGroupMap = vector<uint32_t>(PicSizeInMapUnits, 0);
 		if (num_slice_groups_minus1 == 0) return;
 		cout << "MTP" << slice_group_map_type << endl;
-		size_t i, j, k, x, y, iGroup;
+		int i, j, k, x, y, iGroup;
 		size_t sizeOfUpperLeftGroup =
 			(slice_group_change_direction_flag ? (PicSizeInMapUnits - MapUnitsInSliceGroup0) : MapUnitsInSliceGroup0); // 8-14
 		int leftBound = 0, topBound = 0, rightBound = 0, bottomBound = 0, xDir = 0, yDir = 0, mapUnitVacant = 0;
