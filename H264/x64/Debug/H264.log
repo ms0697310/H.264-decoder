@@ -1,52 +1,53 @@
 ﻿  H264.cpp
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(235,22): warning C4267: '正在初始化': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(237,26): warning C4267: '正在初始化': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(371,32): warning C4244: 'return': 將 'double' 轉換為 'int32_t'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(586,32): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(699,45): warning C4244: '引數': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(934,45): warning C4244: '引數': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1081,33): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1107,30): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1211,30): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1219,30): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1225,33): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1233,33): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1347,57): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1381,56): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1386,52): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1458,36): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1567,7): warning C4101: 'maxW': 未參考的區域變數
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1564,11): warning C4101: 'yN': 未參考的區域變數
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1564,7): warning C4101: 'xN': 未參考的區域變數
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1567,13): warning C4101: 'maxH': 未參考的區域變數
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1632,14): warning C4018: '>': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1684,15): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1756,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1759,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1767,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1770,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1778,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1781,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1809,15): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1812,12): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1931,29): warning C4018: '<=': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1931,61): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1932,20): warning C4018: '<=': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1932,58): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1934,13): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1937,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1944,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1951,14): warning C4267: '=': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1952,15): warning C4267: '=': 將 'size_t' 轉換為 'int'，資料可能遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1958,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1965,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1994,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2002,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2003,19): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2010,18): warning C4018: '<': signed/unsigned 不相符
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2379,42): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2379,39): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2379,36): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1668): warning C4715: 'H264Decoder::procNeighbouring': 不是所有控制路徑都傳回值
-D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1815): warning C4715: 'H264Decoder::parseRun_before': 不是所有控制路徑都傳回值
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(257,22): warning C4267: '正在初始化': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(259,26): warning C4267: '正在初始化': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(399,32): warning C4244: 'return': 將 'double' 轉換為 'int32_t'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(615,32): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(728,45): warning C4244: '引數': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(972,45): warning C4244: '引數': 將 'double' 轉換為 'int'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1126,33): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1153,30): warning C4267: '=': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1256,30): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1264,30): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1271,33): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1279,33): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1389,57): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1423,56): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1432,52): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1507,36): warning C4267: '引數': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1616,7): warning C4101: 'maxW': 未參考的區域變數
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1613,11): warning C4101: 'yN': 未參考的區域變數
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1613,7): warning C4101: 'xN': 未參考的區域變數
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1616,13): warning C4101: 'maxH': 未參考的區域變數
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1681,14): warning C4018: '>': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1735,15): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1808,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1811,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1819,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1822,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1830,16): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1833,13): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1861,15): warning C4267: '正在初始化': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1864,12): warning C4267: 'return': 將 'size_t' 轉換為 'uint32_t'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2021,29): warning C4018: '<=': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2021,61): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2022,20): warning C4018: '<=': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2022,58): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2024,13): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2027,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2034,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2041,14): warning C4267: '=': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2042,15): warning C4267: '=': 將 'size_t' 轉換為 'int'，資料可能遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2048,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2055,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2084,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2092,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2093,19): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2100,18): warning C4018: '<': signed/unsigned 不相符
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2469,42): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2469,39): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2469,36): warning C4244: '引數': 將 'uint16_t' 轉換為 'Uint8'，由於類型不同，可能導致資料遺失
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(2451): warning C4715: 'H264Decoder::SDLInit': 不是所有控制路徑都傳回值
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1717): warning C4715: 'H264Decoder::procNeighbouring': 不是所有控制路徑都傳回值
+D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\H264\H264.cpp(1867): warning C4715: 'H264Decoder::parseRun_before': 不是所有控制路徑都傳回值
   H264.vcxproj -> D:\Docs\碩\NTU\ITCT\H.264_AVC\H264\x64\Debug\H264.exe

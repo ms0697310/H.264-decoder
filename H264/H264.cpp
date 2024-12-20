@@ -22,6 +22,7 @@ using namespace std;
 #define BitDepthC  (8 + bit_depth_chroma_minus8) // 7-5
 #define QpBdOffsetC (6 * bit_depth_chroma_minus8) // 7-6
 #define RawMbBits  (256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC) // 7-7
+#define MaxFrameNum (1 << ( log2_max_frame_num_minus4 + 4 )) // 7-10
 #define PicWidthInMbs (pic_width_in_mbs_minus1 + 1) // 7-13
 #define PicWidthInSamplesL (PicWidthInMbs * 16) // 7-14
 #define PicWidthInSamplesC (PicWidthInMbs * MbWidthC)  // 7-15
@@ -39,10 +40,10 @@ using namespace std;
 #define CodedBlockPatternLuma ( coded_block_pattern % 16 ) // 7-38
 #define CodedBlockPatternChroma ( coded_block_pattern / 16 )// 7-38
 // 8-24 8-25 8-26
-#define MbToSliceGroupMap(run_before) ((frame_mbs_only_flag == 1 || field_pic_flag == 1)\
-? mapUnitToSliceGroupMap[run_before] : MbaffFrameFlag == 1 \
-? mapUnitToSliceGroupMap[ run_before / 2 ] \
-: mapUnitToSliceGroupMap[ ( run_before / ( 2 * PicWidthInMbs ) ) * PicWidthInMbs + (run_before % PicWidthInMbs)])
+#define MbToSliceGroupMap(i) ((frame_mbs_only_flag == 1 || field_pic_flag == 1)\
+? mapUnitToSliceGroupMap[i] : MbaffFrameFlag == 1 \
+? mapUnitToSliceGroupMap[ i / 2 ] \
+: mapUnitToSliceGroupMap[ ( i / ( 2 * PicWidthInMbs ) ) * PicWidthInMbs + (i % PicWidthInMbs)])
 class H264Decoder {
 public:
 	H264Decoder(string fileName) {
@@ -62,7 +63,7 @@ public:
 	}
 private:
 	void init() {
-		//SDLInit();
+		SDLInit();
 		bitsInit();
 	}
 
@@ -169,6 +170,28 @@ private:
 	bool sliceTypeCheck(SliceType type) {
 		return slice_type % 5 == type;
 	}
+	void printSliceType(int type) {
+		switch (type % 5)
+		{
+		case H264Decoder::P:
+			cout << "P Slice" << endl;
+			break;
+		case H264Decoder::B:
+			cout << "B Slice" << endl;
+			break;
+		case H264Decoder::I:
+			cout << "I Slice" << endl;
+			break;
+		case H264Decoder::SP:
+			cout << "SP Slice" << endl;
+			break;
+		case H264Decoder::SI:
+			cout << "SI Slice" << endl;
+			break;
+		default:
+			break;
+		}
+	}
 #pragma region NAL
 	int cc = 0;
 	// B.1.1 Byte stream NAL unit syntax
@@ -197,7 +220,7 @@ private:
 		read_bits(1);//	forbidden_zero_bit All f(1)
 		nal_ref_idc = read_bits(2);//	nal_ref_idc All u(2)
 		nal_unit_type = read_bits(5);//	nal_unit_type All u(5)
-			cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
+		cout << "NLU " << cc++ << " TYPE " << nal_unit_type << endl;
 
 		nalUnitHeaderBytes = 1;
 		if (nal_unit_type == 14 || nal_unit_type == 20 || nal_unit_type == 21) {
@@ -331,10 +354,16 @@ private:
 		return (index < (*byteStream).size());
 	}
 	bool more_rbsp_data() {
-		return more_data_in_byte_stream();
+		if (more_rbsp_trailing_data()) return true;
+		uint32_t temp = bits<<bitsIndex ;
+		while ((temp & 1) != 1 && temp > 0) {
+			temp >>= 1;
+		}
+		if (temp > 1) return true;
+		return false;
 	}
 	bool more_rbsp_trailing_data() {
-		return RBSP.size() > 0;
+		return more_data_in_byte_stream();
 	}
 	const uint32_t next_bits(int n) {
 		if (n <= 0) return 0;
@@ -442,13 +471,16 @@ private:
 
 	// 9.1.2 Mapping process for coded block pattern
 	uint32_t me() {
-		//uint32_t  codeNum = ue();
-		//uint32_t predMode =  MbPartPredMode(mb_type, 0); 
-		//bool isInter = predMode == Inter;
-		//if (ChromaArrayType ==  1 || ChromaArrayType == 2) {
-		//	return table94a[][]
-		//}
-		return 0;
+		uint32_t  codeNum = ue();
+		bool isIntra = MbPartPredMode(mb_type, 0) == Intra_4x4 ||
+			MbPartPredMode(mb_type, 0) == Intra_8x8;
+		int i = isIntra ? 0 : 1;
+		if (ChromaArrayType ==  1 || ChromaArrayType == 2) {
+			return table94a[codeNum][i];
+		}
+		else {
+			return table94b[codeNum][i];
+		}
 	}
 
 	// 7.3.2 Raw byte sequence payloads and RBSP trailing bits syntax
@@ -467,7 +499,7 @@ private:
 	bool constraint_set5_flag = false;
 	bool separate_colour_plane_flag = false;
 	uint32_t reserved_zero_2bits = 0;
-	uint32_t chroma_format_idc = 0;
+	uint32_t chroma_format_idc = 1;
 	uint8_t level_idc = 0;
 	uint32_t seq_parameter_set_id = 0;
 	uint32_t bit_depth_luma_minus8 = 0;
@@ -538,7 +570,6 @@ private:
 		}
 		log2_max_frame_num_minus4 = ue();//log2_max_frame_num_minus4 0 ue(v)
 		pic_order_cnt_type = ue();//	pic_order_cnt_type 0 ue(v)
-		cout << "pic_order_cnt_type" << pic_order_cnt_type << endl;
 		if (pic_order_cnt_type == 0)
 			log2_max_pic_order_cnt_lsb_minus4 = ue();// log2_max_pic_order_cnt_lsb_minus4 0 ue(v)
 		else if (pic_order_cnt_type == 1) {
@@ -821,6 +852,7 @@ private:
 	// 7.3.2.8 Slice layer without partitioning RBSP syntax
 	void slice_layer_without_partitioning_rbsp() {
 		slice_header();
+		decode_pic_order_cnt_type2();
 		slice_data();// /* all categories of slice_data( ) syntax */ 2 | 3 | 4
 		rbsp_slice_trailing_bits();// 2
 	}
@@ -834,9 +866,12 @@ private:
 
 	// 7.3.2.11 RBSP trailing bits syntax
 	void rbsp_trailing_bits() {
-		read_bits(1);//rbsp_stop_one_bit /* equal to 1 */ All f(1)
-		while (!byte_aligned())
-			read_bits(1);//rbsp_alignment_zero_bit /* equal to 0 */ All f(1)
+		bool rbsp_stop_one_bit = read_bits(1);//rbsp_stop_one_bit /* equal to 1 */ All f(1)
+		assert(rbsp_stop_one_bit == 1);
+		while (!byte_aligned()) {
+			bool rbsp_alignment_zero_bit = read_bits(1);//rbsp_alignment_zero_bit /* equal to 0 */ All f(1)
+			assert(rbsp_alignment_zero_bit == 0);
+		}
 	}
 	// 7.3.3 Slice header syntax
 	uint32_t first_mb_in_slice = 0;
@@ -844,6 +879,9 @@ private:
 	uint32_t slice_type = 0;
 	//uint32_t pic_parameter_set_id = 0;
 	uint32_t colour_plane_id = 0;
+	int32_t prevFrameNumOffset = 0;
+	int32_t FrameNumOffset = 0;
+	uint32_t prevFrameNum = 0;
 	uint32_t frame_num = 0;
 	bool field_pic_flag = false;
 	bool bottom_field_flag = false;
@@ -867,12 +905,14 @@ private:
 	void slice_header() {
 		first_mb_in_slice = ue();
 		slice_type = ue();
-		assert(sliceTypeCheck(P) || sliceTypeCheck(I) || sliceTypeCheck(B));
-		cout << "SLICETYPE" << slice_type << endl;
 		pic_parameter_set_id = ue();
 		if (separate_colour_plane_flag == 1)
 			colour_plane_id = read_bits(2);
+		prevFrameNum = frame_num;
 		frame_num = read_bits(log2_max_frame_num_minus4 + 4);
+
+		cout << "[Frame " << frame_num << "] ";
+		printSliceType(slice_type);
 		if (!frame_mbs_only_flag) {
 			field_pic_flag = read_bits(1);
 			if (field_pic_flag)
@@ -930,6 +970,8 @@ private:
 		if (num_slice_groups_minus1 > 0 &&
 			slice_group_map_type >= 3 && slice_group_map_type <= 5)
 			slice_group_change_cycle = read_bits(ceil(log2(PicSizeInMapUnits / SliceGroupChangeRate + 1))); //Ceil( Log2( PicSizeInMapUnits ÷ SliceGroupChangeRate + 1 ) ) 
+
+
 	}
 
 	// 7.3.3.1 Reference picture list modification syntax
@@ -1061,9 +1103,14 @@ private:
 	uint32_t CurrMbAddr = 0;
 	vector<uint32_t> mb_typesInCurrentSlice;
 	vector<uint32_t> TotalCoeffInCurrentSlice;
+	vector<bool> ACAllzeroInCurrentSlice;
+	int prevQPY = 0;
+	int QPY = 0;
 	void slice_data() {
 		mb_typesInCurrentSlice = vector<uint32_t>(PicSizeInMapUnits, 0);
 		TotalCoeffInCurrentSlice = vector<uint32_t>(PicSizeInMapUnits, 0);
+		ACAllzeroInCurrentSlice = vector<bool>(PicSizeInMapUnits, false);
+		prevQPY = SliceQPY;
 		if (entropy_coding_mode_flag)
 			while (!byte_aligned())
 				cabac_alignment_one_bit = read_bits(1);
@@ -1088,6 +1135,7 @@ private:
 				if (MbaffFrameFlag && (CurrMbAddr % 2 == 0 ||
 					(CurrMbAddr % 2 == 1 && prevMbSkipped)))
 					mb_field_decoding_flag = read_bits(1); // mb_field_decoding_flag 2 u(1) | ae(v)
+				cout << "CurrMbAddr " << CurrMbAddr << "/" << PicSizeInMapUnits << endl;
 				macroblock_layer();
 			}
 			if (!entropy_coding_mode_flag)
@@ -1115,10 +1163,12 @@ private:
 	int32_t mb_qp_delta = 0;
 
 	void macroblock_layer() {
-		mb_type = ue();// ue(v) | ae(v)
+		pcm_sample_luma = vector<uint32_t>();
+		pcm_sample_chroma = vector<uint32_t>();
+		mb_type = ue();
+		cout << "mb_type "<<mb_type << endl;
 		mb_typesInCurrentSlice[CurrMbAddr] = mb_type;
 		if (mb_type == I_PCM) {
-
 			while (!byte_aligned())
 				pcm_alignment_zero_bit = read_bits(1);
 			for (size_t i = 0; i < 256; i++)
@@ -1154,11 +1204,12 @@ private:
 					transform_size_8x8_flag = read_bits(1);
 			}
 			if (CodedBlockPatternLuma > 0 || CodedBlockPatternChroma > 0 ||
-				MbPartPredMode(mb_type, 0) == Intra_16x16) {
+				 MbPartPredMode(mb_type, 0) == Intra_16x16) {
 				mb_qp_delta = se();
 				residual(0, 15);
 			}
 		}
+		MBRender();
 	}
 	// 7.3.5.1 Macroblock prediction syntax
 	vector<bool> prev_intra4x4_pred_mode_flag = vector<bool>();
@@ -1182,18 +1233,14 @@ private:
 			if (MbPartPredMode(mb_type, 0) == Intra_4x4)
 				for (size_t luma4x4BlkIdx = 0; luma4x4BlkIdx < 16; luma4x4BlkIdx++) {
 					prev_intra4x4_pred_mode_flag.push_back(read_bits(1));
-
 					if (!prev_intra4x4_pred_mode_flag[luma4x4BlkIdx])
 						rem_intra4x4_pred_mode.push_back(read_bits(3));
-
 				}
 			if (MbPartPredMode(mb_type, 0) == Intra_8x8)
 				for (size_t luma8x8BlkIdx = 0; luma8x8BlkIdx < 4; luma8x8BlkIdx++) {
 					prev_intra8x8_pred_mode_flag.push_back(read_bits(1));
-
 					if (!prev_intra8x8_pred_mode_flag[luma8x8BlkIdx])
 						rem_intra8x8_pred_mode.push_back(read_bits(3));
-
 				}
 			if (ChromaArrayType == 1 || ChromaArrayType == 2)
 				intra_chroma_pred_mode = ue();
@@ -1219,21 +1266,23 @@ private:
 					uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l1_active_minus1 : 2 * num_ref_idx_l1_active_minus1 + 1;
 					ref_idx_l1.push_back(te(x));
 				}
-			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++) {
+				mvd_l0.push_back(vector<vector<int32_t>>());
 				if (MbPartPredMode(mb_type, mbPartIdx) != Pred_L1) {
-					mvd_l0.push_back(vector<vector<int32_t>>());
 					mvd_l0[mbPartIdx].push_back(vector<int32_t>());
 					for (size_t compIdx = 0; compIdx < 2; compIdx++)
 						mvd_l0[mbPartIdx][0].push_back(se());
-
 				}
-			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++)
+			}
+			for (size_t mbPartIdx = 0; mbPartIdx < NumMbPart(mb_type); mbPartIdx++) {
+				mvd_l1.push_back(vector<vector<int32_t>>());
 				if (MbPartPredMode(mb_type, mbPartIdx) != Pred_L0) {
-					mvd_l1.push_back(vector<vector<int32_t>>());
 					mvd_l1[mbPartIdx].push_back(vector<int32_t>());
-					for (size_t compIdx = 0; compIdx < 2; compIdx++)
+					for (size_t compIdx = 0; compIdx < 2; compIdx++) {
 						mvd_l1[mbPartIdx][0].push_back(se());
+					}
 				}
+			}
 		}
 	}
 
@@ -1253,7 +1302,7 @@ private:
 				mb_type != P_8x8ref0 &&
 				sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
 				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L1) {
-				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l0_active_minus1 : 2 * num_ref_idx_l0_active_minus1 + 1;
+				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l0_active_minus1 : (2 * num_ref_idx_l0_active_minus1 + 1);
 				ref_idx_l0.push_back(te(x));
 			}
 		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++)
@@ -1261,7 +1310,7 @@ private:
 				mb_field_decoding_flag != field_pic_flag) &&
 				sub_mb_type[mbPartIdx] != B_Direct_8x8 &&
 				SubMbPredMode(sub_mb_type[mbPartIdx]) != Pred_L0) {
-				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l1_active_minus1 : 2 * num_ref_idx_l1_active_minus1 + 1;
+				uint32_t x = (MbaffFrameFlag == 0 || mb_field_decoding_flag == 0) ? num_ref_idx_l1_active_minus1 : (2 * num_ref_idx_l1_active_minus1 + 1);
 				ref_idx_l1.push_back(te(x));
 			}
 		for (size_t mbPartIdx = 0; mbPartIdx < 4; mbPartIdx++) {
@@ -1310,14 +1359,11 @@ private:
 	int(*CrIntra16x16ACLevel)[16] = new int[16][16];
 	int(*CrLevel4x4)[16] = new int[16][16];
 	int(*CrLevel8x8)[64] = new int[16][64];
-
+	int(*ChromaDCLevel)[4] = new int[2][4];
+	int (*ChromaACLevel)[4][16] = new int[2][4][16];
 	enum channelType { Y, Cb, Cr };
 	// 7.3.5.3 Residual data syntax
 	void residual(size_t startIdx, size_t endIdx) {
-		//if (!entropy_coding_mode_flag)
-		//	residual_block = residual_block_cavlc;
-		//else
-		//	residual_block = residual_block_cabac;
 		residual_luma(i16x16DClevel, i16x16AClevel, level4x4, level8x8, startIdx, endIdx);
 		Intra16x16DCLevel = i16x16DClevel;
 		Intra16x16ACLevel = i16x16AClevel;
@@ -1325,8 +1371,6 @@ private:
 		LumaLevel8x8 = level8x8;
 		if (ChromaArrayType == 1 || ChromaArrayType == 2) {
 			size_t NumC8x8 = 4 / (SubWidthC * SubHeightC);
-			int ChromaDCLevel[2][32] = { 0 };
-			int ChromaACLevel[2][4][4] = { 0 };
 			for (size_t iCbCr = 0; iCbCr < 2; iCbCr++)
 				if ((CodedBlockPatternChroma & 3) && startIdx == 0) {
 					/* chroma DC residual present */
@@ -1379,15 +1423,21 @@ private:
 							CAVLCParsingInvoke(Invoke16x16ACLevel, i8x8 * 4 + i4x4);
 							residual_block(i16x16AClevel[i8x8 * 4 + i4x4],
 								max(0, (int)startIdx - 1), endIdx - 1, 15);
+							bool allzero = true;
+							for (size_t i = 0; i < 15; i++)
+								allzero &= (i16x16AClevel[i8x8 * 4 + i4x4][i] == 0);
+							ACAllzeroInCurrentSlice[CurrMbAddr] = allzero;
 						}
 						else {
 							CAVLCParsingInvoke(InvokeLevel4x4, i8x8 * 4 + i4x4);
 							residual_block(level4x4[i8x8 * 4 + i4x4],
 								startIdx, endIdx, 16);
 						}
-					else if (MbPartPredMode(mb_type, 0) == Intra_16x16)
+					else if (MbPartPredMode(mb_type, 0) == Intra_16x16) {
 						for (size_t i = 0; i < 15; i++)
 							i16x16AClevel[i8x8 * 4 + i4x4][i] = 0;
+						ACAllzeroInCurrentSlice[CurrMbAddr] = true;
+					}
 					else
 						for (size_t i = 0; i < 16; i++)
 							level4x4[i8x8 * 4 + i4x4][i] = 0;
@@ -1414,6 +1464,7 @@ private:
 		string coeff_token = ce();
 		uint32_t suffixLength = 0;
 		int levelVal[16] = { 0 };
+		TotalCoeffInCurrentSlice[CurrMbAddr] = TotalCoeff(coeff_token);
 		if (TotalCoeff(coeff_token) > 0) {
 			if (TotalCoeff(coeff_token) > 10 && TrailingOnes(coeff_token) < 3)
 				suffixLength = 1;
@@ -1481,7 +1532,7 @@ private:
 	void residual_block_cabac(int* coeffLevel, size_t  startIdx, size_t  endIdx, size_t maxNumCoeff) {
 	}
 	// Table 9-5 – coeff_token mapping to TotalCoeff( coeff_token ) and TrailingOnes( coeff_token )
-	string Table95[63][8] = {
+	const string Table95[62][8] = {
 	{"0","0","1","11","1111","000011","01","1"},
 	{"0","1","000101","001011","001111","000000","000111","0001111"},
 	{"1","1","01","10","1110","000001","1","01"},
@@ -1595,18 +1646,18 @@ private:
 		availableFlagB = isMBAvalable(mbAddrB);
 		// 6
 		if (availableFlagA) {
-			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrA] == P_Skip) {
+			if ( mb_typesInCurrentSlice[mbAddrA] == P_Skip || ACAllzeroInCurrentSlice[mbAddrA]) {
 				nA = 0;
 			}
-			else if (sliceTypeCheck(I)) {
+			else  {
 				nA = (mb_typesInCurrentSlice[mbAddrA] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrA];
 			}
 		}
 		if (availableFlagB) {
-			if (sliceTypeCheck(P) && mb_typesInCurrentSlice[mbAddrB] == P_Skip) {
+			if (mb_typesInCurrentSlice[mbAddrB] == P_Skip || ACAllzeroInCurrentSlice[mbAddrB]) {
 				nB = 0;
 			}
-			else if (sliceTypeCheck(I)) {
+			else {
 				nB = (mb_typesInCurrentSlice[mbAddrB] == I_PCM) ? 16 : TotalCoeffInCurrentSlice[mbAddrB];
 			}
 		}
@@ -1676,11 +1727,14 @@ private:
 	}
 	string ce() {
 		int nCIndex = getnCIndex();
-		for (size_t i = 0; i < 63; i++)
+		//cout << hex << next_bits(16) << endl;
+		//cout << dec << "----"<< "nCIndex "<< nCIndex  << endl;
+		for (size_t i = 0; i < 62; i++)
 		{
 			string token = Table95[i][nCIndex];
 			int length = token.length();
 			if (next_bits(length) == bitset<16>(token).to_ulong()) {
+				read_bits(length);
 				return token;
 			}
 		}
@@ -1697,7 +1751,7 @@ private:
 	}
 	uint32_t TrailingOnes(string coeff_token) {
 		int nCIndex = getnCIndex();
-		for (size_t i = 0; i < 63; i++)
+		for (size_t i = 0; i < 62; i++)
 		{
 			if (Table95[i][nCIndex].compare(coeff_token) == 0) return stoi(Table95[i][0]);
 		}
@@ -1705,7 +1759,7 @@ private:
 	}
 	uint32_t TotalCoeff(string coeff_token) {
 		int nCIndex = getnCIndex();
-		for (size_t i = 0; i < 63; i++)
+		for (size_t i = 0; i < 62; i++)
 		{
 			if (Table95[i][nCIndex].compare(coeff_token) == 0) return stoi(Table95[i][1]);
 		}
@@ -1857,11 +1911,16 @@ private:
 				else if (mb_type == I_PCM) return na;
 				else return Intra_16x16;
 			}
-			else if (sliceTypeCheck(P) || sliceTypeCheck(SP)) {
-				return TableP[mb_type][1];
+			else if (sliceTypeCheck(P)) {
+				return (mb_type<5)? TableP[mb_type][1]:Intra_16x16;
 			}
 			else if (sliceTypeCheck(B)) {
 				return TableB[mb_type][1];
+			}
+		}
+		else if (n == 1) {
+			if (sliceTypeCheck(P) || sliceTypeCheck(SP)) {
+				return TableP[mb_type][2];
 			}
 		}
 		return na;
@@ -1889,7 +1948,10 @@ private:
 		else return na;
 	}
 	uint32_t NumSubMbPart(uint32_t sub_mb_type) {
-		if (sliceTypeCheck(P)) { return subTableP[sub_mb_type][0]; }
+		if (sliceTypeCheck(P)) {
+			//if (sub_mb_type >= 4) return na;
+			return subTableP[sub_mb_type][0];
+		}
 		else return na;
 	}
 
@@ -1904,6 +1966,36 @@ private:
 #pragma endregion
 
 #pragma region 8.2
+	// 8.2.1.3 Decoding process for picture order count type 2
+	int TopFieldOrderCnt = 0;
+	int BottomFieldOrderCnt = 0;
+	void decode_pic_order_cnt_type2() {
+		// 8-11
+		prevFrameNumOffset = FrameNumOffset;
+		if (IdrPicFlag == 1)
+			FrameNumOffset = 0;
+		else if (prevFrameNum > frame_num)
+			FrameNumOffset = prevFrameNumOffset + MaxFrameNum;
+		else
+			FrameNumOffset = prevFrameNumOffset;
+		int tempPicOrderCnt = 0;
+		//8-12
+		if (IdrPicFlag == 1)
+			tempPicOrderCnt = 0;
+		else if (nal_ref_idc == 0)
+			tempPicOrderCnt = 2 * (FrameNumOffset + frame_num) - 1;
+		else
+			tempPicOrderCnt = 2 * (FrameNumOffset + frame_num);
+		// 8-13
+		if (!field_pic_flag) {
+			TopFieldOrderCnt = tempPicOrderCnt;
+			BottomFieldOrderCnt = tempPicOrderCnt;
+		}
+		else if (bottom_field_flag)
+			BottomFieldOrderCnt = tempPicOrderCnt;
+		else
+			TopFieldOrderCnt = tempPicOrderCnt;
+	};
 	size_t NextMbAddress(uint32_t n) {
 		size_t i = n + 1;
 		while (i < PicSizeInMbs && MbToSliceGroupMap(i) != MbToSliceGroupMap(n))
@@ -2385,6 +2477,9 @@ private:
 		}
 		// 顯示渲染結果
 		SDL_RenderPresent(renderer);
+	}
+	void MBRender() {
+
 	}
 #pragma endregion
 
